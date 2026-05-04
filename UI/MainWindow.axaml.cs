@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-
 namespace UI;
 
 public partial class MainWindow : Window
