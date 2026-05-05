@@ -2,7 +2,6 @@
 using CSVoom.Parser;
 public class UnitTest1
 {
-    string filePath = "C:\\Users\\Gilas\\Downloads\\4G_DIS9_mr_20230726-200001_20230726-214508_import.csv.gz";
     CSVParser parser = new CSVParser();
 
     [Fact]
@@ -11,9 +10,18 @@ public class UnitTest1
         Assert.True(true);
     }
     [Fact]
-    public void Test_ParseCSV()
+    public void Test_ParseCSV_100()
     { // Test that the parser can read a predefined file and write to the queue.
-        parser.ParseCSV(filePath);
+        if (!File.Exists("test100.csv"))
+        { // Generates a test file if one does not yet exist.
+            for (int i = 0; i < 10; i++)
+            {
+                testFile.WriteLine("1,2,3,4,5,6,7,8,9,10");
+            }
+            testFile.Close();
+        }
+
+        parser.ParseCSV("test100.csv");
         Assert.NotEmpty(parser.queue);
     }
 }
