@@ -1,7 +1,7 @@
 ﻿using Avalonia;
 using System;
 
-namespace UI;
+namespace CSVoom;
 
 class Program
 {

@@ -1,5 +1,5 @@
 using Avalonia.Controls;
-namespace UI;
+namespace CSVoom;
 
 public partial class MainWindow : Window
 {
