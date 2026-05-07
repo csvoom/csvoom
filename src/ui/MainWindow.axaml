@@ -1,20 +1,49 @@
-<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450" x:Class="CSVoom.MainWindow" Title="CSVoom">
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        d:DesignWidth="800"
+        d:DesignHeight="450"
+        x:Class="CSVoom.MainWindow"
+        Title="CSVoom">
 
-    <StackPanel>
-        <TextBlock
-        Margin="5"
-        FontSize="24"
-        HorizontalAlignment="Center"
-        VerticalAlignment="Center"
-        Text="Temperature Converter"
-        ></TextBlock>
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Top" Spacing="8">
+            <TextBlock
+                FontSize="24"
+                HorizontalAlignment="Center"
+                Text="CSVoom" />
 
-        <Button
-        Margin="5"
-        HorizontalAlignment="Center"
-        VerticalAlignment="Center"
-        Content="="
-        ></Button>
-    </StackPanel>
+            <Button
+                HorizontalAlignment="Center"
+                Content="Open CSV"
+                Click="OpenCsvButton_Click" />
+
+            <TextBlock
+                x:Name="StatusTextBlock"
+                HorizontalAlignment="Center"
+                Text="Choose a CSV file to display its contents." />
+        </StackPanel>
+
+        <ScrollViewer Margin="0,12,0,0">
+            <ItemsControl x:Name="CsvLinesItemsControl">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock
+                            FontFamily="Consolas"
+                            Text="{Binding}"
+                            TextWrapping="NoWrap" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
 
 </Window>
