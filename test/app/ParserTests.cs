@@ -1,7 +1,7 @@
 
 using System.IO.Compression;
 using CSVoom.Parser;
-public class UnitTest1
+public class ParserTests
 {
     Parser parser = new Parser();
 
