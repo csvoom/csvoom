@@ -26,7 +26,10 @@
                 Text="Choose a CSV file to display its contents." />
         </StackPanel>
 
-        <ScrollViewer Margin="0,12,0,0">
+        <ScrollViewer
+            x:Name="CsvScrollViewer"
+            Margin="0,12,0,0"
+            ScrollChanged="CsvScrollViewer_ScrollChanged">
             <ItemsControl x:Name="CsvLinesItemsControl">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -45,5 +48,4 @@
             </ItemsControl>
         </ScrollViewer>
     </DockPanel>
-
 </Window>

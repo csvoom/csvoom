@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
@@ -10,21 +8,17 @@ namespace CSVoom;
 
 public partial class MainWindow : Window
 {
-    private const int BatchSize = 500;
+    private static readonly Parser Parser = new();
 
-    private readonly Parser _parser = new();
-    private readonly ObservableCollection<string> _csvLines = [];
-
-    private IAsyncEnumerator<string>? _csvEnumerator;
+    private string? _currentFilePath;
     private string? _currentFileName;
-    private int _loadedLineCount;
-    private bool _isLoadingBatch;
     private bool _finishedLoading;
+    private bool _isLoadingBatch;
 
     public MainWindow()
     {
         InitializeComponent();
-        CsvLinesItemsControl.ItemsSource = _csvLines;
+        CsvLinesItemsControl.ItemsSource = Parser.Lines;
     }
 
     private async void OpenCsvButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -54,42 +48,36 @@ public partial class MainWindow : Window
             return;
         }
 
-        var filePath = files[0].Path.LocalPath;
+        _currentFilePath = files[0].Path.LocalPath;
+        _currentFileName = files[0].Name;
+        _finishedLoading = false;
 
         try
         {
-            if (_csvEnumerator is not null)
-            {
-                await _csvEnumerator.DisposeAsync();
-                _csvEnumerator = null;
-            }
-
-            _csvLines.Clear();
-            _loadedLineCount = 0;
-            _finishedLoading = false;
-            _currentFileName = files[0].Name;
+            //await Parser.ResetAsync();
 
             StatusTextBlock.Text = $"Loading {_currentFileName}...";
-
-            _csvEnumerator = _parser.ParserLineEnumerator(filePath);
 
             await LoadNextBatchAsync();
         }
         catch (Exception ex)
         {
-            _csvLines.Clear();
+            //await Parser.ResetAsync();
+
+            _currentFilePath = null;
+            _currentFileName = null;
+            _finishedLoading = true;
+
             StatusTextBlock.Text = $"Failed to load file: {ex.Message}";
         }
     }
 
     private async void CsvScrollViewer_ScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        if (_finishedLoading || _isLoadingBatch || _csvEnumerator is null)
+        if (_finishedLoading || _currentFilePath is null || sender is not ScrollViewer scrollViewer)
         {
             return;
         }
-
-        var scrollViewer = (ScrollViewer)sender!;
 
         var distanceFromBottom =
             scrollViewer.Extent.Height
@@ -104,7 +92,7 @@ public partial class MainWindow : Window
 
     private async Task LoadNextBatchAsync()
     {
-        if (_csvEnumerator is null || _isLoadingBatch || _finishedLoading)
+        if (_currentFilePath is null || _isLoadingBatch || _finishedLoading)
         {
             return;
         }
@@ -113,29 +101,18 @@ public partial class MainWindow : Window
 
         try
         {
-            var loadedThisBatch = 0;
+            var lineCountBeforeLoad = Parser.Lines.Count;
 
-            while (loadedThisBatch < BatchSize && await _csvEnumerator.MoveNextAsync())
-            {
-                _csvLines.Add(_csvEnumerator.Current);
-                _loadedLineCount++;
-                loadedThisBatch++;
-            }
+            await Parser.ReadBatchAsync(_currentFilePath);
 
-            if (loadedThisBatch == 0)
+            if (Parser.Lines.Count == lineCountBeforeLoad)
             {
                 _finishedLoading = true;
-                await _csvEnumerator.DisposeAsync();
-                _csvEnumerator = null;
+                StatusTextBlock.Text = $"Finished loading {_currentFileName}.";
+                return;
+            }
 
-                StatusTextBlock.Text = _loadedLineCount == 0
-                    ? "The selected file is empty."
-                    : $"Loaded {_loadedLineCount:N0} line(s) from {_currentFileName}.";
-            }
-            else
-            {
-                StatusTextBlock.Text = $"Loaded {_loadedLineCount:N0} line(s)... scroll down to load more.";
-            }
+            StatusTextBlock.Text = $"Loaded {Parser.Lines.Count:N0} lines from {_currentFileName}.";
         }
         finally
         {
