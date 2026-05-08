@@ -10,8 +10,7 @@ namespace CSVoom.app
     public class Parser
     {
         private const int BatchSize = 50;
-
-        private int _loadedLineCount;
+        
         private bool _isLoadingBatch;
         private bool _finishedLoading;
 
@@ -66,23 +65,6 @@ namespace CSVoom.app
         }
 
         /// <summary>
-        /// Convenience method: reads all raw lines into a list asynchronously.
-        /// </summary>
-        public async Task<List<string>> ReadAllLinesAsync(string filePath)
-        {
-            var results = new List<string>();
-
-            await using var enumerator = ParserLineEnumerator(filePath);
-
-            while (await enumerator.MoveNextAsync())
-            {
-                results.Add(enumerator.Current);
-            }
-
-            return results;
-        }
-
-        /// <summary>
         /// Reads the next batch of lines into the observable collection.
         /// The same collection can be observed from another class.
         /// </summary>
@@ -108,8 +90,6 @@ namespace CSVoom.app
                 while (loadedThisBatch < BatchSize && await _csvEnumerator.MoveNextAsync())
                 {
                     Lines.Add(_csvEnumerator.Current);
-
-                    _loadedLineCount++;
                     loadedThisBatch++;
                 }
 

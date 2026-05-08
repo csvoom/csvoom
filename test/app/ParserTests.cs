@@ -24,8 +24,8 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 await testFile.WriteLineAsync("1");
             }
         }
-        var test = await _parser.ReadAllLinesAsync("test100.csv");
-        Assert.NotEmpty(test);
+        var test = await _parser.ReadBatchAsync("test100.csv");
+        Assert.NotEmpty(_parser.Lines);
     }
     [Fact]
     public async Task TestParse0()
@@ -34,7 +34,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         { // Generates a test file if one does not yet exist.
             await using var testFile = new StreamWriter("test0.csv");
         }
-        var test = await _parser.ReadAllLinesAsync("test0.csv");
+        var test = await _parser.ReadBatchAsync("test0.csv");
         Assert.NotNull(test);
     }
     [Fact]
@@ -49,7 +49,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
 
             await writer.WriteLineAsync("1");
         }
-        var test = await _parser.ReadAllLinesAsync("testZIP.csv.gz");
-        Assert.NotEmpty(test);
+        var test = await _parser.ReadBatchAsync("testZIP.csv.gz");
+        Assert.NotEmpty(_parser.Lines);
     }
 }
