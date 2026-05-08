@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
+using CSVoom.app;
+
 namespace CSVoom;
 
 public partial class MainWindow : Window
