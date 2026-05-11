@@ -28,6 +28,7 @@
 
         <DataGrid
             x:Name="CsvDataGrid"
+            Loaded="CsvDataGrid_Loaded"
             AutoGenerateColumns="False"
             IsReadOnly="True"
             GridLinesVisibility="All"

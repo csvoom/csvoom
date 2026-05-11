@@ -1,8 +1,13 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Data;
+using Avalonia.Layout;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using CSVoom.app;
 
 namespace CSVoom;
@@ -21,6 +26,37 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         CsvDataGrid.ItemsSource = Parser.Rows;
+    }
+
+    private void CsvDataGrid_Loaded(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var verticalScrollBar = CsvDataGrid
+            .GetVisualDescendants()
+            .OfType<ScrollBar>()
+            .FirstOrDefault(scrollBar => scrollBar.Orientation == Orientation.Vertical);
+
+        if (verticalScrollBar is not null)
+        {
+            verticalScrollBar.PropertyChanged += CsvVerticalScrollBar_PropertyChanged;
+        }
+    }
+
+    private async void CsvVerticalScrollBar_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property != RangeBase.ValueProperty ||
+            _finishedLoading ||
+            _currentFilePath is null ||
+            sender is not ScrollBar scrollBar)
+        {
+            return;
+        }
+
+        var distanceFromBottom = scrollBar.Maximum - scrollBar.Value;
+
+        if (distanceFromBottom <= 100)
+        {
+            await LoadNextBatchAsync();
+        }
     }
 
     private async void OpenCsvButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -72,7 +108,7 @@ public partial class MainWindow : Window
 
     private async void CsvScrollViewer_ScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        if (_finishedLoading || _currentFilePath is null || sender is not ScrollViewer scrollViewer)
+        if (_finishedLoading || _currentFilePath is null || e.Source is not ScrollViewer scrollViewer)
         {
             return;
         }
@@ -82,7 +118,7 @@ public partial class MainWindow : Window
             - scrollViewer.Viewport.Height
             - scrollViewer.Offset.Y;
 
-        if (distanceFromBottom <= 100)
+        if (distanceFromBottom <= 20)
         {
             await LoadNextBatchAsync();
         }

@@ -9,7 +9,7 @@ namespace CSVoom.app
 {
     public class Parser
     {
-        private const int BatchSize = 50;
+        private const int BatchSize = 20;
 
         private bool _isLoadingBatch;
         private bool _finishedLoading;
@@ -20,7 +20,7 @@ namespace CSVoom.app
 
         public ObservableCollection<Dictionary<string, string>> Rows { get; } = new();
 
-        public IReadOnlyList<string> Headers { get; private set; } = [];
+        public IReadOnlyList<string> Headers { get; private set; } = Array.Empty<string>();
 
         /// <summary>
         /// Asynchronously lists raw lines from the CSV file or decompressed GZIP stream.
