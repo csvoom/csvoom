@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Platform.Storage;
 using CSVoom.app;
 
@@ -9,13 +10,18 @@ namespace CSVoom;
 
 public partial class MainWindow : Window
 {
-    private readonly Parser _parser = new();
-    private readonly ObservableCollection<string> _csvLines = [];
+    private static readonly Parser Parser = new();
+
+    private string? _currentFilePath;
+    private string? _currentFileName;
+    private bool _finishedLoading;
+    private bool _isLoadingBatch;
+    private bool _columnsCreated;
 
     public MainWindow()
     {
         InitializeComponent();
-        CsvLinesItemsControl.ItemsSource = _csvLines;
+        CsvDataGrid.ItemsSource = Parser.Rows;
     }
 
     private async void OpenCsvButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -45,7 +51,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var filePath = files[0].Path.LocalPath;
+        _currentFilePath = files[0].Path.LocalPath;
+        _currentFileName = files[0].Name;
+        _finishedLoading = false;
+        _columnsCreated = false;
+        CsvDataGrid.Columns.Clear();
 
         try
         {
@@ -80,6 +90,70 @@ public partial class MainWindow : Window
         {
             _csvLines.Clear();
             StatusTextBlock.Text = $"Failed to load file: {ex.Message}";
+        }
+    }
+
+    private async void CsvScrollViewer_ScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (_finishedLoading || _currentFilePath is null || sender is not ScrollViewer scrollViewer)
+        {
+            return;
+        }
+
+        var distanceFromBottom =
+            scrollViewer.Extent.Height
+            - scrollViewer.Viewport.Height
+            - scrollViewer.Offset.Y;
+
+        if (distanceFromBottom <= 100)
+        {
+            await LoadNextBatchAsync();
+        }
+    }
+
+    private async Task LoadNextBatchAsync()
+    {
+        if (_currentFilePath is null || _isLoadingBatch || _finishedLoading)
+        {
+            return;
+        }
+
+        _isLoadingBatch = true;
+
+        try
+        {
+            var rowCountBeforeLoad = Parser.Rows.Count;
+
+            await Parser.ReadBatchAsync(_currentFilePath);
+
+            if (!_columnsCreated && Parser.Headers.Count > 0)
+            {
+                CsvDataGrid.Columns.Clear();
+
+                foreach (var header in Parser.Headers)
+                {
+                    CsvDataGrid.Columns.Add(new DataGridTextColumn
+                    {
+                        Header = header,
+                        Binding = new Binding($"[{header}]")
+                    });
+                }
+
+                _columnsCreated = true;
+            }
+
+            if (Parser.Rows.Count == rowCountBeforeLoad)
+            {
+                _finishedLoading = true;
+                StatusTextBlock.Text = $"Finished loading {_currentFileName}.";
+                return;
+            }
+
+            StatusTextBlock.Text = $"Loaded {Parser.Rows.Count:N0} rows from {_currentFileName}.";
+        }
+        finally
+        {
+            _isLoadingBatch = false;
         }
     }
 }

@@ -16,40 +16,32 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task TestParse100()
     { // Test that the parser can read a predefined file and write to the queue.
-        if (!File.Exists("test100.csv"))
-        { // Generates a test file if one does not yet exist.
-            await using var testFile = new StreamWriter("test100.csv");
-            for (int i = 0; i < 10; i++)
-            {
-                await testFile.WriteLineAsync("1");
-            }
+        await using var testFile = new StreamWriter("test100.csv");
+        for (int i = 0; i < 10; i++)
+        {
+            await testFile.WriteLineAsync("1");
         }
-        var test = await _parser.ReadAllLinesAsync("test100.csv");
-        Assert.NotEmpty(test);
+
+        var test = await _parser.ReadBatchAsync("test100.csv");
+        Assert.NotEmpty(_parser.Rows);
     }
     [Fact]
     public async Task TestParse0()
     { // Test that the parser can read a predefined file and not cause an error if no data is present.
-        if (!File.Exists("test0.csv"))
-        { // Generates a test file if one does not yet exist.
-            await using var testFile = new StreamWriter("test0.csv");
-        }
-        var test = await _parser.ReadAllLinesAsync("test0.csv");
+        await using var testFile = new StreamWriter("test0.csv");
+
+        var test = await _parser.ReadBatchAsync("test0.csv");
         Assert.NotNull(test);
     }
     [Fact]
     public async Task TestParseZip()
     { // Test that the parser can read a predefined file and not cause an error if no data is present.
-        if (!File.Exists("testZIP.csv.gz"))
-        {
-            // Generates a test file if one does not yet exist.
-            await using var compressedFile = File.Create("testZIP.csv.gz");
-            await using var gzipStream = new GZipStream(compressedFile, CompressionMode.Compress);
-            await using var writer = new StreamWriter(gzipStream);
+        await using var compressedFile = File.Create("testZIP.csv.gz");
+        await using var gzipStream = new GZipStream(compressedFile, CompressionMode.Compress);
+        await using var writer = new StreamWriter(gzipStream);
+        await writer.WriteLineAsync("1");
 
-            await writer.WriteLineAsync("1");
-        }
-        var test = await _parser.ReadAllLinesAsync("testZIP.csv.gz");
-        Assert.NotEmpty(test);
+        var test = await _parser.ReadBatchAsync("testZIP.csv.gz");
+        Assert.NotEmpty(_parser.Rows);
     }
 }
