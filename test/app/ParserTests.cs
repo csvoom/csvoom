@@ -35,10 +35,11 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     }
     [Fact]
     public async Task TestParseZip()
-    { // Test that the parser can read a predefined file and not cause an error if no data is present.
+    { // Test that the parser can read a predefined gzip-compressed CSV file.
         await using var compressedFile = File.Create("testZIP.csv.gz");
         await using var gzipStream = new GZipStream(compressedFile, CompressionMode.Compress);
         await using var writer = new StreamWriter(gzipStream);
+        await writer.WriteLineAsync("value");
         await writer.WriteLineAsync("1");
 
         var test = await _parser.ReadBatchAsync("testZIP.csv.gz");

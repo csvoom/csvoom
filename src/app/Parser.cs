@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
 using System.Threading.Tasks;
@@ -63,11 +64,12 @@ namespace CSVoom.app
         /// <summary>
         /// Convenience method: reads all raw lines into a list asynchronously.
         /// </summary>
+        /// <summary>
+        /// Reads the next batch of CSV rows asynchronously.
+        /// </summary>
         public async Task<ObservableCollection<Dictionary<string, string>>> ReadBatchAsync(string filePath)
         {
-            var results = new List<string>();
-            await using var enumerator = ParserLineEnumerator(filePath);
-            while (await enumerator.MoveNextAsync())
+            if (_isLoadingBatch || _finishedLoading && _currentFilePath == filePath)
             {
                 return Rows;
             }
@@ -78,6 +80,11 @@ namespace CSVoom.app
             {
                 if (_csvEnumerator is null || _currentFilePath != filePath)
                 {
+                    if (_csvEnumerator is not null)
+                    {
+                        await _csvEnumerator.DisposeAsync();
+                    }
+
                     _currentFilePath = filePath;
                     _csvEnumerator = ParserLineEnumerator(filePath);
                     _headersLoaded = false;
@@ -96,6 +103,8 @@ namespace CSVoom.app
                     else
                     {
                         _finishedLoading = true;
+                        await _csvEnumerator.DisposeAsync();
+                        _csvEnumerator = null;
                         return Rows;
                     }
                 }
@@ -130,7 +139,6 @@ namespace CSVoom.app
             {
                 _isLoadingBatch = false;
             }
-            return results;
         }
 
         private static IReadOnlyList<string> ParseCsvLine(string line)

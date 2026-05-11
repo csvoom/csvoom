@@ -1,5 +1,4 @@
 using System;
-using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -59,36 +58,14 @@ public partial class MainWindow : Window
 
         try
         {
-            _csvLines.Clear();
-            StatusTextBlock.Text = $"Loading {files[0].Name}...";
-
-            var loadedLineCount = 0;
-            var uiUpdateCounter = 0;
-
-            await using var parser = _parser.ParserLineEnumerator(filePath);
-            while (await parser.MoveNextAsync())
-            {
-                _csvLines.Add(parser.Current);
-
-                loadedLineCount++;
-                uiUpdateCounter++;
-
-                if (uiUpdateCounter >= 500)
-                {
-                    StatusTextBlock.Text = $"Loaded {loadedLineCount:N0} line(s)...";
-                    uiUpdateCounter = 0;
-
-                    await Task.Yield();
-                }
-            }
-
-            StatusTextBlock.Text = loadedLineCount == 0
-                ? "The selected file is empty."
-                : $"Loaded {loadedLineCount:N0} line(s) from {files[0].Name}.";
+            StatusTextBlock.Text = $"Loading {_currentFileName}...";
+            await LoadNextBatchAsync();
         }
         catch (Exception ex)
         {
-            _csvLines.Clear();
+            _currentFilePath = null;
+            _currentFileName = null;
+            _finishedLoading = true;
             StatusTextBlock.Text = $"Failed to load file: {ex.Message}";
         }
     }
