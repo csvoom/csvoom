@@ -26,26 +26,12 @@
                 Text="Choose a CSV file to display its contents." />
         </StackPanel>
 
-        <ScrollViewer
-            x:Name="CsvScrollViewer"
-            Margin="0,12,0,0"
-            ScrollChanged="CsvScrollViewer_ScrollChanged">
-            <ItemsControl x:Name="CsvLinesItemsControl">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Vertical" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock
-                            FontFamily="Consolas"
-                            Text="{Binding}"
-                            TextWrapping="NoWrap" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+        <DataGrid
+            x:Name="CsvDataGrid"
+            AutoGenerateColumns="False"
+            IsReadOnly="True"
+            GridLinesVisibility="All"
+            HeadersVisibility="All" />
     </DockPanel>
+
 </Window>
