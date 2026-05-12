@@ -9,6 +9,8 @@ namespace CSVoom.app
 {
     public class Parser
     {
+        public const string RowNumberKey = "__CsvRowNumber";
+
         private const int BatchSize = 20;
 
         private bool _isLoadingBatch;
@@ -17,6 +19,7 @@ namespace CSVoom.app
 
         private IAsyncEnumerator<string>? _csvEnumerator;
         private string? _currentFilePath;
+        private int _nextRowNumber = 1;
 
         public ObservableCollection<Dictionary<string, string>> Rows { get; } = new();
 
@@ -60,10 +63,7 @@ namespace CSVoom.app
             }
             Console.WriteLine("Unsupported file format: " + filePath);
         }
-
-        /// <summary>
-        /// Convenience method: reads all raw lines into a list asynchronously.
-        /// </summary>
+        
         /// <summary>
         /// Reads the next batch of CSV rows asynchronously.
         /// </summary>
@@ -89,6 +89,7 @@ namespace CSVoom.app
                     _csvEnumerator = ParserLineEnumerator(filePath);
                     _headersLoaded = false;
                     _finishedLoading = false;
+                    _nextRowNumber = 1;
                     Rows.Clear();
                     Headers = [];
                 }
@@ -114,7 +115,12 @@ namespace CSVoom.app
                 while (loadedThisBatch < BatchSize && await _csvEnumerator.MoveNextAsync())
                 {
                     var values = ParseCsvLine(_csvEnumerator.Current);
-                    var row = new Dictionary<string, string>();
+                    var row = new Dictionary<string, string>
+                    {
+                        [RowNumberKey] = _nextRowNumber.ToString()
+                    };
+
+                    _nextRowNumber++;
 
                     for (var i = 0; i < Headers.Count; i++)
                     {

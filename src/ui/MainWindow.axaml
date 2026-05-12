@@ -12,27 +12,28 @@
         <StackPanel DockPanel.Dock="Top" Spacing="8">
             <TextBlock
                 FontSize="24"
-                HorizontalAlignment="Center"
+                HorizontalAlignment="Left"
                 Text="CSVoom" />
 
             <Button
-                HorizontalAlignment="Center"
+                HorizontalAlignment="Left"
                 Content="Open CSV"
                 Click="OpenCsvButton_Click" />
 
             <TextBlock
                 x:Name="StatusTextBlock"
-                HorizontalAlignment="Center"
+                HorizontalAlignment="Left"
                 Text="Choose a CSV file to display its contents." />
         </StackPanel>
-
         <DataGrid
             x:Name="CsvDataGrid"
             Loaded="CsvDataGrid_Loaded"
+            LoadingRow="CsvDataGrid_LoadingRow"
             AutoGenerateColumns="False"
             IsReadOnly="True"
             GridLinesVisibility="All"
-            HeadersVisibility="All" />
+            HeadersVisibility="All"
+            />
     </DockPanel>
 
 </Window>

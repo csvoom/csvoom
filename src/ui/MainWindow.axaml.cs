@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
@@ -9,6 +10,8 @@ using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using CSVoom.app;
+using Avalonia.Collections;
+using System.Collections.Specialized;
 
 namespace CSVoom;
 
@@ -16,16 +19,23 @@ public partial class MainWindow : Window
 {
     private static readonly Parser Parser = new();
 
+    private DataGridCollectionView? _gridView;
+
     private string? _currentFilePath;
     private string? _currentFileName;
     private bool _finishedLoading;
     private bool _isLoadingBatch;
     private bool _columnsCreated;
+    private bool _isSorting;
 
     public MainWindow()
     {
         InitializeComponent();
-        CsvDataGrid.ItemsSource = Parser.Rows;
+
+        _gridView = new DataGridCollectionView(Parser.Rows);
+        _gridView.SortDescriptions.CollectionChanged += SortDescriptions_CollectionChanged;
+
+        CsvDataGrid.ItemsSource = _gridView;
     }
 
     private void CsvDataGrid_Loaded(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -35,18 +45,34 @@ public partial class MainWindow : Window
             .OfType<ScrollBar>()
             .FirstOrDefault(scrollBar => scrollBar.Orientation == Orientation.Vertical);
 
-        if (verticalScrollBar is not null)
-        {
-            verticalScrollBar.PropertyChanged += CsvVerticalScrollBar_PropertyChanged;
-        }
+        verticalScrollBar?.PropertyChanged += CsvVerticalScrollBar_PropertyChanged;
+        _isSorting = false;
     }
 
-    private async void CsvVerticalScrollBar_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    private void SortDescriptions_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (e.Property != RangeBase.ValueProperty ||
-            _finishedLoading ||
-            _currentFilePath is null ||
-            sender is not ScrollBar scrollBar)
+        if (_gridView is null)
+            return;
+
+        _isSorting = _gridView.SortDescriptions.Count != 0;
+    }
+    
+    private void CsvDataGrid_LoadingRow(object? sender, DataGridRowEventArgs e)
+        {
+            if (e.Row.DataContext is Dictionary<string, string> row &&
+                row.TryGetValue(Parser.RowNumberKey, out var rowNumber))
+            {
+                e.Row.Header = rowNumber;
+            }
+        }
+    
+    private async void CsvVerticalScrollBar_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+        {
+            if (e.Property != RangeBase.ValueProperty ||
+                _finishedLoading ||
+                _currentFilePath is null ||
+                _isSorting ||
+                sender is not ScrollBar scrollBar)
         {
             return;
         }
@@ -61,7 +87,7 @@ public partial class MainWindow : Window
 
     private async void OpenCsvButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        var topLevel = TopLevel.GetTopLevel(this);
+        var topLevel = GetTopLevel(this);
         if (topLevel is null)
         {
             StatusTextBlock.Text = "Unable to open the file picker.";
@@ -105,25 +131,7 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = $"Failed to load file: {ex.Message}";
         }
     }
-
-    private async void CsvScrollViewer_ScrollChanged(object? sender, ScrollChangedEventArgs e)
-    {
-        if (_finishedLoading || _currentFilePath is null || e.Source is not ScrollViewer scrollViewer)
-        {
-            return;
-        }
-
-        var distanceFromBottom =
-            scrollViewer.Extent.Height
-            - scrollViewer.Viewport.Height
-            - scrollViewer.Offset.Y;
-
-        if (distanceFromBottom <= 20)
-        {
-            await LoadNextBatchAsync();
-        }
-    }
-
+    
     private async Task LoadNextBatchAsync()
     {
         if (_currentFilePath is null || _isLoadingBatch || _finishedLoading)
@@ -148,7 +156,8 @@ public partial class MainWindow : Window
                     CsvDataGrid.Columns.Add(new DataGridTextColumn
                     {
                         Header = header,
-                        Binding = new Binding($"[{header}]")
+                        Binding = new Binding($"[{header}]"),
+                        SortMemberPath = $"[{header}]"
                     });
                 }
 
