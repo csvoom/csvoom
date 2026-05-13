@@ -22,7 +22,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             await testFile.WriteLineAsync("1");
         }
 
-        var test = await _parser.ReadBatchAsync("test100.csv");
+        await _parser.ReadBatchAsync("test100.csv");
         Assert.NotEmpty(_parser.Rows);
     }
     [Fact]
@@ -42,7 +42,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         await writer.WriteLineAsync("value");
         await writer.WriteLineAsync("1");
 
-        var test = await _parser.ReadBatchAsync("testZIP.csv.gz");
+        await _parser.ReadBatchAsync("testZIP.csv.gz");
         Assert.NotEmpty(_parser.Rows);
     }
 }

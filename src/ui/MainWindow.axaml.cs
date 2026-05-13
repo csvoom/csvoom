@@ -19,7 +19,7 @@ public partial class MainWindow : Window
 {
     private static readonly Parser Parser = new();
 
-    private DataGridCollectionView? _gridView;
+    private readonly DataGridCollectionView? _gridView;
 
     private string? _currentFilePath;
     private string? _currentFileName;
@@ -58,27 +58,20 @@ public partial class MainWindow : Window
     }
     
     private void CsvDataGrid_LoadingRow(object? sender, DataGridRowEventArgs e)
-        {
-            if (e.Row.DataContext is Dictionary<string, string> row &&
-                row.TryGetValue(Parser.RowNumberKey, out var rowNumber))
-            {
-                e.Row.Header = rowNumber;
-            }
+    { 
+        if (e.Row.DataContext is Dictionary<string, string> row && row.TryGetValue(Parser.RowNumberKey, out var rowNumber)) 
+        { 
+            e.Row.Header = rowNumber;
         }
+    }
     
     private async void CsvVerticalScrollBar_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
-        {
-            if (e.Property != RangeBase.ValueProperty ||
-                _finishedLoading ||
-                _currentFilePath is null ||
-                _isSorting ||
-                sender is not ScrollBar scrollBar)
+    { 
+        if (e.Property != RangeBase.ValueProperty || _finishedLoading || _currentFilePath is null || _isSorting || sender is not ScrollBar scrollBar)
         {
             return;
         }
-
         var distanceFromBottom = scrollBar.Maximum - scrollBar.Value;
-
         if (distanceFromBottom <= 100)
         {
             await LoadNextBatchAsync();
@@ -117,19 +110,9 @@ public partial class MainWindow : Window
         _finishedLoading = false;
         _columnsCreated = false;
         CsvDataGrid.Columns.Clear();
-
-        try
-        {
-            StatusTextBlock.Text = $"Loading {_currentFileName}...";
-            await LoadNextBatchAsync();
-        }
-        catch (Exception ex)
-        {
-            _currentFilePath = null;
-            _currentFileName = null;
-            _finishedLoading = true;
-            StatusTextBlock.Text = $"Failed to load file: {ex.Message}";
-        }
+        
+        StatusTextBlock.Text = $"Loading {_currentFileName}...";
+        await LoadNextBatchAsync();
     }
     
     private async Task LoadNextBatchAsync()

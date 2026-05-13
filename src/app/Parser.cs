@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace CSVoom.app
@@ -149,7 +150,39 @@ namespace CSVoom.app
 
         private static IReadOnlyList<string> ParseCsvLine(string line)
         {
-            return line.Split(',');
+            {
+                var fields = new List<string>();
+                var current = new StringBuilder();
+                var inQuotes = false;
+                for (var i = 0; i < line.Length; i++)
+                {
+                    var c = line[i];
+                    if (c == '"')
+                    {
+                        if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                        {
+                            // Escaped quote inside quoted field ("")
+                            current.Append('"');
+                            i++;
+                        }
+                        else
+                        {
+                            inQuotes = !inQuotes;
+                        }
+                    }
+                    else if (c == ',' && !inQuotes)
+                    {
+                        fields.Add(current.ToString());
+                        current.Clear();
+                    }
+                    else
+                    {
+                        current.Append(c);
+                    }
+                }
+                fields.Add(current.ToString());
+                return fields;
+            }
         }
     }
 }
