@@ -34,10 +34,9 @@ namespace CSVoom.app
         {
             if (!File.Exists(filePath))
             {
-                Console.WriteLine("File not found: " + filePath);
+                Console.WriteLine("File not found: " + filePath); 
                 yield break;
             }
-
             var ext = Path.GetExtension(filePath);
             if (ext.Equals(".gz", StringComparison.OrdinalIgnoreCase))
             { // Open the GZIP file and read lines from the decompressed stream.
@@ -49,7 +48,6 @@ namespace CSVoom.app
                     yield return line;
                     await Task.Yield();
                 }
-
                 yield break;
             }
             if (ext.Equals(".csv", StringComparison.OrdinalIgnoreCase))
@@ -147,7 +145,7 @@ namespace CSVoom.app
                 _isLoadingBatch = false;
             }
         }
-
+        
         private static IReadOnlyList<string> ParseCsvLine(string line)
         {
             {
