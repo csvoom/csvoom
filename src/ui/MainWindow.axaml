@@ -15,25 +15,44 @@
                 HorizontalAlignment="Left"
                 Text="CSVoom" />
 
-            <Button
-                HorizontalAlignment="Left"
-                Content="Open CSV"
-                Click="OpenCsvButton_Click" />
+                <StackPanel
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Left"
+                    Spacing="8">
+                    <Button
+                        Content="Open CSV"
+                        Click="OpenCsvButton_Click" />
 
-            <TextBlock
-                x:Name="StatusTextBlock"
-                HorizontalAlignment="Left"
-                Text="Choose a CSV file to display its contents." />
-        </StackPanel>
-        <DataGrid
-            x:Name="CsvDataGrid"
+                    <Button
+                        Content="Unhide all columns"
+                        Click="UnhideAllColumnsButton_Click" />
+                </StackPanel>
+
+                <TextBlock
+                    x:Name="StatusTextBlock"
+                    HorizontalAlignment="Left"
+                    Text="Choose a CSV file to display its contents." />
+            </StackPanel>
+            <DataGrid
+                x:Name="CsvDataGrid"
             Loaded="CsvDataGrid_Loaded"
             LoadingRow="CsvDataGrid_LoadingRow"
+            CanUserSortColumns="False"
             AutoGenerateColumns="False"
             IsReadOnly="True"
             GridLinesVisibility="All"
-            HeadersVisibility="All"
-            />
-    </DockPanel>
-
+            HeadersVisibility="All">
+            <DataGrid.Styles>
+                <Style Selector="DataGridColumnHeader">
+                    <Setter Property="ContextMenu">
+                        <ContextMenu>
+                            <MenuItem
+                                Header="Hide column"
+                                Click="HideColumn_Click" />
+                        </ContextMenu>
+                    </Setter>
+                </Style>
+            </DataGrid.Styles>
+        </DataGrid>
+        </DockPanel>
 </Window>

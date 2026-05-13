@@ -1,44 +1,73 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
+using System.Linq;
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
+using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using CSVoom.app;
-using Avalonia.Collections;
-using System.Collections.Specialized;
+using Avalonia.Input;
+using System.Reflection;
 
 namespace CSVoom;
 
 public partial class MainWindow : Window
 {
+    
     private static readonly Parser Parser = new();
-
     private readonly DataGridCollectionView? _gridView;
-
     private string? _currentFilePath;
     private string? _currentFileName;
     private bool _finishedLoading;
     private bool _isLoadingBatch;
     private bool _columnsCreated;
-    private bool _isSorting;
+    private DataGridColumn? _columnPendingHide;
 
     public MainWindow()
     {
         InitializeComponent();
-
         _gridView = new DataGridCollectionView(Parser.Rows);
-        _gridView.SortDescriptions.CollectionChanged += SortDescriptions_CollectionChanged;
-
         CsvDataGrid.ItemsSource = _gridView;
+
+        CsvDataGrid.AddHandler(
+            ContextRequestedEvent,
+            CsvDataGrid_ContextRequested,
+            RoutingStrategies.Tunnel);
     }
 
-    private void CsvDataGrid_Loaded(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void CsvDataGrid_ContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        _columnPendingHide = null;
+
+        if (e.Source is not Visual sourceVisual)
+            return;
+
+        var header = sourceVisual as DataGridColumnHeader
+            ?? sourceVisual.GetVisualAncestors().OfType<DataGridColumnHeader>().FirstOrDefault();
+
+        if (header is null)
+            return;
+
+        _columnPendingHide = GetColumnFromHeader(header);
+    }
+
+    private static DataGridColumn? GetColumnFromHeader(DataGridColumnHeader header)
+    {
+        var owningColumnProperty = typeof(DataGridColumnHeader).GetProperty(
+            "OwningColumn",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        return owningColumnProperty?.GetValue(header) as DataGridColumn;
+    }
+
+    private void CsvDataGrid_Loaded(object? sender, RoutedEventArgs e)
     {
         var verticalScrollBar = CsvDataGrid
             .GetVisualDescendants()
@@ -46,15 +75,6 @@ public partial class MainWindow : Window
             .FirstOrDefault(scrollBar => scrollBar.Orientation == Orientation.Vertical);
 
         verticalScrollBar?.PropertyChanged += CsvVerticalScrollBar_PropertyChanged;
-        _isSorting = false;
-    }
-
-    private void SortDescriptions_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (_gridView is null)
-            return;
-
-        _isSorting = _gridView.SortDescriptions.Count != 0;
     }
     
     private void CsvDataGrid_LoadingRow(object? sender, DataGridRowEventArgs e)
@@ -67,7 +87,7 @@ public partial class MainWindow : Window
     
     private async void CsvVerticalScrollBar_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     { 
-        if (e.Property != RangeBase.ValueProperty || _finishedLoading || _currentFilePath is null || _isSorting || sender is not ScrollBar scrollBar)
+        if (e.Property != RangeBase.ValueProperty || _finishedLoading || _currentFilePath is null || sender is not ScrollBar scrollBar)
         {
             return;
         }
@@ -78,7 +98,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OpenCsvButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async void OpenCsvButton_Click(object? sender, RoutedEventArgs e)
     {
         var topLevel = GetTopLevel(this);
         if (topLevel is null)
@@ -114,11 +134,27 @@ public partial class MainWindow : Window
         _currentFileName = files[0].Name;
         _finishedLoading = false;
         _columnsCreated = false;
-        _isSorting = false;
         CsvDataGrid.Columns.Clear();
         
         StatusTextBlock.Text = $"Loading {_currentFileName}...";
         await LoadNextBatchAsync();
+    }
+    
+    private void HideColumn_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_columnPendingHide is null)
+            return;
+
+        _columnPendingHide.IsVisible = false;
+        _columnPendingHide = null;
+    }
+
+    private void UnhideAllColumnsButton_Click(object? sender, RoutedEventArgs e)
+    {
+        foreach (var column in CsvDataGrid.Columns)
+        {
+            column.IsVisible = true;
+        }
     }
     
     private async Task LoadNextBatchAsync()
@@ -127,39 +163,32 @@ public partial class MainWindow : Window
         {
             return;
         }
-
         _isLoadingBatch = true;
-
         try
         {
             var rowCountBeforeLoad = Parser.Rows.Count;
-
             await Parser.ReadBatchAsync(_currentFilePath);
-
             if (!_columnsCreated && Parser.Headers.Count > 0)
             {
                 CsvDataGrid.Columns.Clear();
-
                 foreach (var header in Parser.Headers)
                 {
-                    CsvDataGrid.Columns.Add(new DataGridTextColumn
+                    var column = new DataGridTextColumn
                     {
                         Header = header,
                         Binding = new Binding($"[{header}]"),
                         SortMemberPath = $"[{header}]"
-                    });
+                    };
+                    CsvDataGrid.Columns.Add(column);
                 }
-
                 _columnsCreated = true;
             }
-
             if (Parser.Rows.Count == rowCountBeforeLoad)
             {
                 _finishedLoading = true;
                 StatusTextBlock.Text = $"Finished loading {_currentFileName}.";
                 return;
             }
-
             StatusTextBlock.Text = $"Loaded {Parser.Rows.Count:N0} rows from {_currentFileName}.";
         }
         finally
