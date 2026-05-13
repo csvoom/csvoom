@@ -105,10 +105,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_gridView is not null)
+        {
+            _gridView.SortDescriptions.Clear();
+        }
+
         _currentFilePath = files[0].Path.LocalPath;
         _currentFileName = files[0].Name;
         _finishedLoading = false;
         _columnsCreated = false;
+        _isSorting = false;
         CsvDataGrid.Columns.Clear();
         
         StatusTextBlock.Text = $"Loading {_currentFileName}...";
