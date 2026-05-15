@@ -10,7 +10,6 @@ using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Interactivity;
-using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using CSVoom.app;
 using Avalonia.Input;

@@ -32,9 +32,9 @@
                     x:Name="StatusTextBlock"
                     HorizontalAlignment="Left"
                     Text="Choose a CSV file to display its contents." />
-            </StackPanel>
-            <DataGrid
-                x:Name="CsvDataGrid"
+        </StackPanel>
+        <DataGrid
+            x:Name="CsvDataGrid"
             Loaded="CsvDataGrid_Loaded"
             LoadingRow="CsvDataGrid_LoadingRow"
             CanUserSortColumns="False"
@@ -42,17 +42,6 @@
             IsReadOnly="True"
             GridLinesVisibility="All"
             HeadersVisibility="All">
-            <DataGrid.Styles>
-                <Style Selector="DataGridColumnHeader">
-                    <Setter Property="ContextMenu">
-                        <ContextMenu>
-                            <MenuItem
-                                Header="Hide column"
-                                Click="HideColumn_Click" />
-                        </ContextMenu>
-                    </Setter>
-                </Style>
-            </DataGrid.Styles>
         </DataGrid>
-        </DockPanel>
+    </DockPanel>
 </Window>

@@ -24,16 +24,4 @@
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
-  
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))" and Condition="'$(Configuration)' == 'Release'"> 
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('macOS'))" and Condition="'$(Configuration)' == 'Release'">
-    <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))" and Condition="'$(Configuration)' == 'Release'">
-    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
-  </PropertyGroup>
 </Project>
