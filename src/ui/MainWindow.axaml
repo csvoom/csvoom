@@ -10,28 +10,24 @@
 
     <DockPanel Margin="12">
         <StackPanel DockPanel.Dock="Top" Spacing="8">
-            <TextBlock
-                FontSize="24"
-                HorizontalAlignment="Left"
-                Text="CSVoom" />
+            <TextBlock FontSize="24" HorizontalAlignment="Left" Text="CSVoom"/>
+            
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
+                <Button Content="Open CSV" Click="OpenCsvButton_Click"/>
+                <Button Content="Unhide all columns" Click="UnhideAllColumnsButton_Click" />
+            </StackPanel>
 
-                <StackPanel
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Left"
-                    Spacing="8">
-                    <Button
-                        Content="Open CSV"
-                        Click="OpenCsvButton_Click" />
-
-                    <Button
-                        Content="Unhide all columns"
-                        Click="UnhideAllColumnsButton_Click" />
-                </StackPanel>
-
-                <TextBlock
-                    x:Name="StatusTextBlock"
-                    HorizontalAlignment="Left"
-                    Text="Choose a CSV file to display its contents." />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="8">
+                <TextBox
+                    x:Name="CommandTextBox"
+                    Watermark="Command, e.g. hide a:x"
+                    KeyDown="CommandTextBox_KeyDown"
+                    HorizontalAlignment="Stretch"
+                    MinWidth="320" />
+                <Button Content="Run" Click="RunCommandButton_Click" />
+            </StackPanel>
+        
+            <TextBlock x:Name="StatusTextBlock" HorizontalAlignment="Left" Text="Choose a CSV file to display its contents." />
         </StackPanel>
         <DataGrid
             x:Name="CsvDataGrid"
@@ -42,6 +38,11 @@
             IsReadOnly="True"
             GridLinesVisibility="All"
             HeadersVisibility="All">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Click Me"/>
+                </ContextMenu>
+            </DataGrid.ContextMenu>
         </DataGrid>
     </DockPanel>
 </Window>
