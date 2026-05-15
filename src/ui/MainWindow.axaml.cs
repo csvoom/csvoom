@@ -91,6 +91,105 @@ public partial class MainWindow : Window
         StatusTextBlock.Text = $"Unknown command: {command}";
     }
 
+    private async Task ExecuteCommandAsync(string commandText)
+    {
+        if (string.IsNullOrWhiteSpace(commandText))
+        {
+            return;
+        }
+
+        var parts = commandText.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        var command = parts[0];
+
+        if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
+        {
+            await ExecuteFindCommandAsync(parts.Length > 1 ? parts[1] : string.Empty);
+            return;
+        }
+
+        ExecuteCommand(commandText);
+    }
+
+    private async Task ExecuteFindCommandAsync(string searchText)
+    {
+        if (CsvDataGrid.Columns.Count == 0 || _currentFilePath is null)
+        {
+            StatusTextBlock.Text = "Open a CSV file before running find commands.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            StatusTextBlock.Text = "Usage: find word";
+            return;
+        }
+
+        searchText = searchText.Trim();
+        StatusTextBlock.Text = $"Searching for \"{searchText}\"...";
+
+        while (true)
+        {
+            var match = FindLoadedCellContaining(searchText);
+
+            if (match is not null)
+            {
+                var (row, column) = match.Value;
+
+                column.IsVisible = true;
+                CsvDataGrid.SelectedItem = row;
+                CsvDataGrid.ScrollIntoView(row, column);
+                CsvDataGrid.Focus();
+
+                var rowNumber = row.TryGetValue(Parser.RowNumberKey, out var value) ? value : "?";
+                StatusTextBlock.Text = $"Found \"{searchText}\" at row {rowNumber}, column {column.Header}.";
+                return;
+            }
+
+            if (_finishedLoading)
+            {
+                StatusTextBlock.Text = $"No matches found for \"{searchText}\".";
+                return;
+            }
+
+            var rowCountBeforeLoad = Parser.Rows.Count;
+            await LoadNextBatchAsync();
+
+            if (Parser.Rows.Count == rowCountBeforeLoad && _finishedLoading)
+            {
+                StatusTextBlock.Text = $"No matches found for \"{searchText}\".";
+                return;
+            }
+        }
+    }
+
+    private (Dictionary<string, string> Row, DataGridColumn Column)? FindLoadedCellContaining(string searchText)
+    {
+        foreach (var row in Parser.Rows)
+        {
+            foreach (var header in Parser.Headers)
+            {
+                if (!row.TryGetValue(header, out var cellValue))
+                {
+                    continue;
+                }
+
+                if (!cellValue.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var column = FindColumnByNameOrLetter(header);
+
+                if (column is not null)
+                {
+                    return (row, column);
+                }
+            }
+        }
+
+        return null;
+    }
+
     private void ExecuteHideCommand(string arguments)
     {
         if (CsvDataGrid.Columns.Count == 0)
@@ -169,20 +268,20 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RunCommandButton_Click(object? sender, RoutedEventArgs e)
+    private async void RunCommandButton_Click(object? sender, RoutedEventArgs e)
     {
-        ExecuteCommand(CommandTextBox.Text ?? string.Empty);
+        await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
         CommandTextBox.SelectAll();
     }
 
-    private void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
+    private async void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter)
         {
             return;
         }
 
-        ExecuteCommand(CommandTextBox.Text ?? string.Empty);
+        await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
         CommandTextBox.SelectAll();
         e.Handled = true;
     }
