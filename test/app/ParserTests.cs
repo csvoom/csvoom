@@ -6,43 +6,266 @@ namespace CSVoom.app;
 public class ParserTests(ITestOutputHelper testOutputHelper)
 {
     private readonly ITestOutputHelper _testOutputHelper = testOutputHelper;
-    private readonly Parser _parser = new Parser();
+    private readonly Parser _parser = new();
 
     [Fact]
     public void TestXUnit()
-    { // Make sure XUnit is working.
+    {
         Assert.True(true);
     }
+
     [Fact]
-    public async Task TestParse100()
-    { // Test that the parser can read a predefined file and write to the queue.
-        await using var testFile = new StreamWriter("test100.csv");
-        for (int i = 0; i < 10; i++)
+    public async Task TestReadHeaders()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
         {
-            await testFile.WriteLineAsync("1");
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,age,city",
+                "Alice,30,London"
+            ]);
+
+            var headers = await _parser.ReadHeadersAsync(filePath);
+
+            Assert.Equal(["name", "age", "city"], headers);
         }
-
-        await _parser.ReadBatchAsync("test100.csv");
-        Assert.NotEmpty(_parser.Rows);
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
     }
+
     [Fact]
-    public async Task TestParse0()
-    { // Test that the parser can read a predefined file and not cause an error if no data is present.
-        await using var testFile = new StreamWriter("test0.csv");
+    public async Task TestReadRange()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
 
-        var test = await _parser.ReadBatchAsync("test0.csv");
-        Assert.NotNull(test);
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "value",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+            ]);
+
+            var rows = await _parser.ReadRangeAsync(filePath, 2, 4, 1000);
+
+            Assert.Equal(3, rows.Count);
+            Assert.Equal("2", rows[0]["value"]);
+            Assert.Equal("3", rows[1]["value"]);
+            Assert.Equal("4", rows[2]["value"]);
+            Assert.Equal("2", rows[0][Parser.RowNumberKey]);
+            Assert.Equal("4", rows[2][Parser.RowNumberKey]);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
     }
+
+    [Fact]
+    public async Task TestReadRangeCapsAtMaxRows()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "value",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+            ]);
+
+            var rows = await _parser.ReadRangeAsync(filePath, 1, 5, 2);
+
+            Assert.Equal(2, rows.Count);
+            Assert.Equal("1", rows[0]["value"]);
+            Assert.Equal("2", rows[1]["value"]);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TestReadEmptyFile()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllTextAsync(filePath, string.Empty);
+
+            var headers = await _parser.ReadHeadersAsync(filePath);
+            var rows = await _parser.ReadRangeAsync(filePath, 1, 10, 1000);
+
+            Assert.Empty(headers);
+            Assert.Empty(rows);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TestReadMatchingRows()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris",
+                "Charlie,London"
+            ]);
+
+            var rows = await _parser.ReadMatchingRowsAsync(
+                filePath,
+                row => row.TryGetValue("city", out var city)
+                    && city.Equals("London", StringComparison.OrdinalIgnoreCase),
+                1000);
+
+            Assert.Equal(2, rows.Count);
+            Assert.Equal("Alice", rows[0]["name"]);
+            Assert.Equal("Charlie", rows[1]["name"]);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TestFindFirst()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris",
+                "Charlie,Berlin"
+            ]);
+
+            var match = await _parser.FindFirstAsync(filePath, "paris");
+
+            Assert.NotNull(match);
+            Assert.Equal(2, match.Value.RowNumber);
+            Assert.Equal("city", match.Value.Header);
+            Assert.Equal("Bob", match.Value.Row["name"]);
+            Assert.Equal("Paris", match.Value.Row["city"]);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TestFindFirstReturnsNullWhenNoMatchExists()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris"
+            ]);
+
+            var match = await _parser.FindFirstAsync(filePath, "Berlin");
+
+            Assert.Null(match);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+    }
+
     [Fact]
     public async Task TestParseZip()
-    { // Test that the parser can read a predefined gzip-compressed CSV file.
-        await using var compressedFile = File.Create("testZIP.csv.gz");
-        await using var gzipStream = new GZipStream(compressedFile, CompressionMode.Compress);
-        await using var writer = new StreamWriter(gzipStream);
-        await writer.WriteLineAsync("value");
-        await writer.WriteLineAsync("1");
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.csv.gz");
 
-        await _parser.ReadBatchAsync("testZIP.csv.gz");
-        Assert.NotEmpty(_parser.Rows);
+        try
+        {
+            await using (var compressedFile = File.Create(filePath))
+            await using (var gzipStream = new GZipStream(compressedFile, CompressionMode.Compress))
+            await using (var writer = new StreamWriter(gzipStream))
+            {
+                await writer.WriteLineAsync("value");
+                await writer.WriteLineAsync("1");
+                await writer.WriteLineAsync("2");
+            }
+
+            var rows = await _parser.ReadRangeAsync(filePath, 1, 2, 1000);
+
+            Assert.Equal(2, rows.Count);
+            Assert.Equal("1", rows[0]["value"]);
+            Assert.Equal("2", rows[1]["value"]);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
     }
 }

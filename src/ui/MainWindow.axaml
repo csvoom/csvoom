@@ -31,8 +31,6 @@
         </StackPanel>
         <DataGrid
             x:Name="CsvDataGrid"
-            Loaded="CsvDataGrid_Loaded"
-            LoadingRow="CsvDataGrid_LoadingRow"
             CanUserSortColumns="False"
             AutoGenerateColumns="False"
             IsReadOnly="True"

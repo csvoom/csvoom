@@ -1,32 +1,33 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Linq;
-using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Data;
-using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Interactivity;
-using Avalonia.VisualTree;
 using CSVoom.app;
 using Avalonia.Input;
-using System.Reflection;
 
 namespace CSVoom;
 
 public partial class MainWindow : Window
 {
+    private const int MaxVisibleRows = 1000;
+
     private static readonly Parser Parser = new();
+    private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = new();
+    private readonly DataGridCollectionView _gridView;
+
     private string? _currentFilePath;
     private string? _currentFileName;
-    private bool _finishedLoading;
-    private bool _isLoadingBatch;
+    private bool _isLoading;
 
     private readonly Dictionary<string, DataGridColumn> _columnsByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DataGridColumn> _columnsByLetter = new(StringComparer.OrdinalIgnoreCase);
+
 
     private static string GetColumnLetter(int columnIndex)
     {
@@ -65,32 +66,7 @@ public partial class MainWindow : Window
         var column = FindColumnByNameOrLetter(searchValue);
         return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
     }
-
-    private void ExecuteCommand(string commandText)
-    {
-        if (string.IsNullOrWhiteSpace(commandText))
-        {
-            return;
-        }
-
-        var parts = commandText.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        var command = parts[0];
-
-        if (command.Equals("hide", StringComparison.OrdinalIgnoreCase))
-        {
-            ExecuteHideCommand(parts.Length > 1 ? parts[1] : string.Empty);
-            return;
-        }
-
-        if (command.Equals("unhide", StringComparison.OrdinalIgnoreCase))
-        {
-            ExecuteUnhideCommand(parts.Length > 1 ? parts[1] : string.Empty);
-            return;
-        }
-
-        StatusTextBlock.Text = $"Unknown command: {command}";
-    }
-
+    
     private async Task ExecuteCommandAsync(string commandText)
     {
         if (string.IsNullOrWhiteSpace(commandText))
@@ -100,14 +76,145 @@ public partial class MainWindow : Window
 
         var parts = commandText.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         var command = parts[0];
+        var arguments = parts.Length > 1 ? parts[1] : string.Empty;
 
         if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
         {
-            await ExecuteFindCommandAsync(parts.Length > 1 ? parts[1] : string.Empty);
+            await ExecuteFindCommandAsync(arguments);
             return;
         }
 
-        ExecuteCommand(commandText);
+        if (command.Equals("filter", StringComparison.OrdinalIgnoreCase))
+        {
+            ExecuteFilterCommand(arguments);
+            return;
+        }
+
+        if (command.Equals("load", StringComparison.OrdinalIgnoreCase))
+        {
+            await ExecuteLoadCommandAsync(arguments);
+            return;
+        }
+
+        if (command.Equals("hide", StringComparison.OrdinalIgnoreCase))
+        {
+            ExecuteHideCommand(arguments);
+            return;
+        }
+
+        if (command.Equals("unhide", StringComparison.OrdinalIgnoreCase))
+        {
+            ExecuteUnhideCommand(arguments);
+            return;
+        }
+
+        StatusTextBlock.Text = $"Unknown command: {command}";
+    }
+
+    private async Task ExecuteLoadCommandAsync(string arguments)
+    {
+        if (_currentFilePath is null)
+        {
+            StatusTextBlock.Text = "Open a CSV file before running load commands.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            StatusTextBlock.Text = "Usage: load 1:1000";
+            return;
+        }
+
+        var rangeParts = arguments.Split(':', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        if (rangeParts.Length != 2
+            || !int.TryParse(rangeParts[0], out var startRow)
+            || !int.TryParse(rangeParts[1], out var endRow)
+            || startRow <= 0
+            || endRow < startRow)
+        {
+            StatusTextBlock.Text = "Usage: load 1:1000";
+            return;
+        }
+
+        await LoadRangeIntoViewAsync(startRow, endRow);
+    }
+
+    private void ExecuteFilterCommand(string arguments)
+    {
+        if (CsvDataGrid.Columns.Count == 0)
+        {
+            StatusTextBlock.Text = "Open a CSV file before running filter commands.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            StatusTextBlock.Text = "Usage: filter word, filter columnName, or filter clear";
+            return;
+        }
+
+        var filterText = arguments.Trim();
+
+        if (filterText.Equals("clear", StringComparison.OrdinalIgnoreCase))
+        {
+            _gridView.Filter = null;
+            _gridView.Refresh();
+            StatusTextBlock.Text = "Filter cleared.";
+            return;
+        }
+
+        var matchingHeader = Parser.Headers.FirstOrDefault(header =>
+            header.Equals(filterText, StringComparison.OrdinalIgnoreCase));
+
+        if (matchingHeader is not null)
+        {
+            _gridView.Filter = item =>
+            {
+                if (item is not Dictionary<string, string> row)
+                {
+                    return false;
+                }
+
+                if (!row.TryGetValue(matchingHeader, out var value))
+                {
+                    return false;
+                }
+
+                return !string.IsNullOrWhiteSpace(value)
+                    && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase);
+            };
+
+            _gridView.Refresh();
+            StatusTextBlock.Text = $"Filtered rows where column \"{matchingHeader}\" is not empty and not \\N.";
+            return;
+        }
+
+        _gridView.Filter = item =>
+        {
+            if (item is not Dictionary<string, string> row)
+            {
+                return false;
+            }
+
+            foreach (var header in Parser.Headers)
+            {
+                if (!row.TryGetValue(header, out var value))
+                {
+                    continue;
+                }
+
+                if (value.Contains(filterText, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        _gridView.Refresh();
+        StatusTextBlock.Text = $"Filtered rows containing \"{filterText}\".";
     }
 
     private async Task ExecuteFindCommandAsync(string searchText)
@@ -127,67 +234,37 @@ public partial class MainWindow : Window
         searchText = searchText.Trim();
         StatusTextBlock.Text = $"Searching for \"{searchText}\"...";
 
-        while (true)
+        var match = await Parser.FindFirstAsync(_currentFilePath, searchText);
+
+        if (match is null)
         {
-            var match = FindLoadedCellContaining(searchText);
-
-            if (match is not null)
-            {
-                var (row, column) = match.Value;
-
-                column.IsVisible = true;
-                CsvDataGrid.SelectedItem = row;
-                CsvDataGrid.ScrollIntoView(row, column);
-                CsvDataGrid.Focus();
-
-                var rowNumber = row.TryGetValue(Parser.RowNumberKey, out var value) ? value : "?";
-                StatusTextBlock.Text = $"Found \"{searchText}\" at row {rowNumber}, column {column.Header}.";
-                return;
-            }
-
-            if (_finishedLoading)
-            {
-                StatusTextBlock.Text = $"No matches found for \"{searchText}\".";
-                return;
-            }
-
-            var rowCountBeforeLoad = Parser.Rows.Count;
-            await LoadNextBatchAsync();
-
-            if (Parser.Rows.Count == rowCountBeforeLoad && _finishedLoading)
-            {
-                StatusTextBlock.Text = $"No matches found for \"{searchText}\".";
-                return;
-            }
-        }
-    }
-
-    private (Dictionary<string, string> Row, DataGridColumn Column)? FindLoadedCellContaining(string searchText)
-    {
-        foreach (var row in Parser.Rows)
-        {
-            foreach (var header in Parser.Headers)
-            {
-                if (!row.TryGetValue(header, out var cellValue))
-                {
-                    continue;
-                }
-
-                if (!cellValue.Contains(searchText, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var column = FindColumnByNameOrLetter(header);
-
-                if (column is not null)
-                {
-                    return (row, column);
-                }
-            }
+            StatusTextBlock.Text = $"No matches found for \"{searchText}\".";
+            return;
         }
 
-        return null;
+        var foundRowNumber = match.Value.RowNumber;
+        var windowStart = Math.Max(1, foundRowNumber - 20);
+        var windowEnd = windowStart + MaxVisibleRows - 1;
+
+        var rows = await Parser.ReadRangeAsync(_currentFilePath, windowStart, windowEnd, MaxVisibleRows);
+        ReplaceVisibleRows(rows);
+
+        var visibleMatch = _visibleRows.FirstOrDefault(row =>
+            row.TryGetValue(Parser.RowNumberKey, out var rowNumberText)
+            && int.TryParse(rowNumberText, out var rowNumber)
+            && rowNumber == foundRowNumber);
+
+        var column = FindColumnByNameOrLetter(match.Value.Header);
+
+        if (visibleMatch is not null && column is not null)
+        {
+            column.IsVisible = true;
+            CsvDataGrid.SelectedItem = visibleMatch;
+            CsvDataGrid.ScrollIntoView(visibleMatch, column);
+            CsvDataGrid.Focus();
+        }
+
+        StatusTextBlock.Text = $"Found \"{searchText}\" at row {foundRowNumber:N0}, column {match.Value.Header}.";
     }
 
     private void ExecuteHideCommand(string arguments)
@@ -285,91 +362,12 @@ public partial class MainWindow : Window
         CommandTextBox.SelectAll();
         e.Handled = true;
     }
-
-    private static DataGridColumn? GetColumnFromHeader(DataGridColumnHeader header)
-    { // REMOVE
-        var owningColumnProperty = typeof(DataGridColumnHeader).GetProperty(
-            "OwningColumn",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-
-        return owningColumnProperty?.GetValue(header) as DataGridColumn;
-    }
-    
-    private async Task LoadNextBatchAsync()
-    {
-        if (_currentFilePath is null || _isLoadingBatch || _finishedLoading)
-        {
-            return;
-        }
-        _isLoadingBatch = true;
-        try
-        {
-            var rowCountBeforeLoad = Parser.Rows.Count;
-            await Parser.ReadBatchAsync(_currentFilePath);
-            if (Parser.Rows.Count == rowCountBeforeLoad)
-            {
-                _finishedLoading = true;
-                StatusTextBlock.Text = $"Finished loading {_currentFileName}.";
-                return;
-            }
-            StatusTextBlock.Text = $"Loaded {Parser.Rows.Count:N0} rows from {_currentFileName}.";
-        }
-        finally
-        {
-            _isLoadingBatch = false;
-        }
-    }
     
     public MainWindow()
     {
         InitializeComponent();
-        var gridView = new DataGridCollectionView(Parser.Rows);
-        CsvDataGrid.ItemsSource = gridView;
-
-        CsvDataGrid.AddHandler(
-            ContextRequestedEvent,
-            CsvDataGrid_ContextRequested,
-            RoutingStrategies.Tunnel);
-    }
-    
-    private void CsvDataGrid_ContextRequested(object? sender, ContextRequestedEventArgs e)
-    { 
-        if (e.Source is not Visual sourceVisual)
-            return;
-        
-        var header = sourceVisual as DataGridColumnHeader
-            ?? sourceVisual.GetVisualAncestors().OfType<DataGridColumnHeader>().FirstOrDefault();
-    }
-    
-    private void CsvDataGrid_Loaded(object? sender, RoutedEventArgs e)
-    {
-        var verticalScrollBar = CsvDataGrid
-            .GetVisualDescendants()
-            .OfType<ScrollBar>()
-            .FirstOrDefault(scrollBar => scrollBar.Orientation == Orientation.Vertical);
-
-        verticalScrollBar?.PropertyChanged += CsvVerticalScrollBar_PropertyChanged;
-    }
-    
-    private void CsvDataGrid_LoadingRow(object? sender, DataGridRowEventArgs e)
-    { 
-        if (e.Row.DataContext is Dictionary<string, string> row && row.TryGetValue(Parser.RowNumberKey, out var rowNumber)) 
-        { 
-            e.Row.Header = rowNumber;
-        }
-    }
-    
-    private async void CsvVerticalScrollBar_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
-    { 
-        if (e.Property != RangeBase.ValueProperty || _finishedLoading || _currentFilePath is null || sender is not ScrollBar scrollBar)
-        {
-            return;
-        }
-        var distanceFromBottom = scrollBar.Maximum - scrollBar.Value;
-        if (distanceFromBottom <= 100)
-        {
-            await LoadNextBatchAsync();
-        }
+        _gridView = new DataGridCollectionView(_visibleRows);
+        CsvDataGrid.ItemsSource = _gridView;
     }
 
     private async void OpenCsvButton_Click(object? sender, RoutedEventArgs e)
@@ -401,14 +399,15 @@ public partial class MainWindow : Window
 
         _currentFilePath = files[0].Path.LocalPath;
         _currentFileName = files[0].Name;
-        _finishedLoading = false;
+        _gridView.Filter = null;
+        _visibleRows.Clear();
         CsvDataGrid.Columns.Clear();
         _columnsByName.Clear();
         _columnsByLetter.Clear();
 
         StatusTextBlock.Text = $"Loading {_currentFileName}...";
 
-        await LoadNextBatchAsync();
+        await Parser.ReadHeadersAsync(_currentFilePath);
 
         CsvDataGrid.Columns.Clear();
         _columnsByName.Clear();
@@ -430,10 +429,67 @@ public partial class MainWindow : Window
             _columnsByName[header] = column;
             _columnsByLetter[columnLetter] = column;
         }
+
+        await LoadRangeIntoViewAsync(1, MaxVisibleRows);
     }
 
     private void UnhideAllColumnsButton_Click(object? sender, RoutedEventArgs e)
     {
         ShowAllColumns();
+    }
+
+    private async Task LoadRangeIntoViewAsync(int startRow, int endRow)
+    {
+        if (_currentFilePath is null || _isLoading)
+        {
+            return;
+        }
+
+        if (startRow <= 0 || endRow < startRow)
+        {
+            StatusTextBlock.Text = "Invalid row range.";
+            return;
+        }
+
+        var requestedRows = endRow - startRow + 1;
+
+        if (requestedRows > MaxVisibleRows)
+        {
+            endRow = startRow + MaxVisibleRows - 1;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
+
+            var rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow, MaxVisibleRows);
+            ReplaceVisibleRows(rows);
+
+            if (rows.Count == 0)
+            {
+                StatusTextBlock.Text = $"No rows found in range {startRow:N0}:{endRow:N0}.";
+                return;
+            }
+
+            StatusTextBlock.Text = $"Showing {rows.Count:N0} rows from range {startRow:N0}:{endRow:N0}.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ReplaceVisibleRows(IEnumerable<Dictionary<string, string>> rows)
+    {
+        _visibleRows.Clear();
+
+        foreach (var row in rows)
+        {
+            _visibleRows.Add(row);
+        }
+
+        _gridView.Refresh();
     }
 }
