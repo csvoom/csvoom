@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -97,7 +98,7 @@ namespace CSVoom.app
                 return rows;
             }
 
-            var currentRowNumber = 0;
+            var currentRowNumber = 1;
 
             while (await enumerator.MoveNextAsync())
             {
@@ -108,14 +109,13 @@ namespace CSVoom.app
                     continue;
                 }
 
-                if (currentRowNumber > endRow || rows.Count >= maxRows)
+                if (currentRowNumber > endRow || rows.Count > maxRows)
                 {
                     break;
                 }
 
                 rows.Add(BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber));
             }
-
             return rows;
         }
 
@@ -140,7 +140,7 @@ namespace CSVoom.app
                 return rows;
             }
 
-            var currentRowNumber = 0;
+            var currentRowNumber = 1;
 
             while (await enumerator.MoveNextAsync())
             {
@@ -155,7 +155,7 @@ namespace CSVoom.app
 
                 rows.Add(row);
 
-                if (rows.Count >= maxRows)
+                if (rows.Count > maxRows)
                 {
                     break;
                 }
@@ -166,7 +166,8 @@ namespace CSVoom.app
 
         public async Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindFirstAsync(
             string filePath,
-            string searchText)
+            string searchText,
+            string? searchHeader = null)
         {
             if (string.IsNullOrWhiteSpace(searchText))
             {
@@ -175,6 +176,13 @@ namespace CSVoom.app
 
             await EnsureHeadersLoadedAsync(filePath);
 
+            if (!string.IsNullOrWhiteSpace(searchHeader)
+                && !searchHeader.Equals(RowNumberKey, StringComparison.OrdinalIgnoreCase)
+                && !Headers.Contains(searchHeader, StringComparer.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
             await using var enumerator = ParserLineEnumerator(filePath);
 
             if (!await enumerator.MoveNextAsync())
@@ -182,7 +190,37 @@ namespace CSVoom.app
                 return null;
             }
 
-            var currentRowNumber = 0;
+            var currentRowNumber = 1;
+            var headersToSearch = string.IsNullOrWhiteSpace(searchHeader)
+                ? Headers.Prepend(RowNumberKey).ToArray()
+                : searchHeader.Equals(RowNumberKey, StringComparison.OrdinalIgnoreCase)
+                    ? [RowNumberKey]
+                    : Headers
+                        .Where(header => header.Equals(searchHeader, StringComparison.OrdinalIgnoreCase))
+                        .ToArray();
+
+            var headerRow = new Dictionary<string, string>
+            {
+                [RowNumberKey] = currentRowNumber.ToString()
+            };
+
+            foreach (var header in Headers)
+            {
+                headerRow[header] = header;
+            }
+
+            foreach (var header in headersToSearch)
+            {
+                if (!headerRow.TryGetValue(header, out var value))
+                {
+                    continue;
+                }
+
+                if (value.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                {
+                    return (headerRow, header, currentRowNumber);
+                }
+            }
 
             while (await enumerator.MoveNextAsync())
             {
@@ -190,7 +228,7 @@ namespace CSVoom.app
 
                 var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
 
-                foreach (var header in Headers)
+                foreach (var header in headersToSearch)
                 {
                     if (!row.TryGetValue(header, out var value))
                     {
@@ -270,4 +308,3 @@ namespace CSVoom.app
         }
     }
 }
-
