@@ -2,7 +2,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:csVoom="clr-namespace:CSVoom"
         mc:Ignorable="d"
         d:DesignWidth="800"
         d:DesignHeight="450"
@@ -11,7 +10,7 @@
 
     <DockPanel Margin="12">
         <StackPanel DockPanel.Dock="Top" Spacing="8">
-            <TextBlock FontSize="24" HorizontalAlignment="Left" Text="CSVoom"/>
+            <TextBlock FontSize="24" HorizontalAlignment="Left" Text="CSVoom" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
                 <Button Content="Open CSV" Click="OpenCsvButton_Click" />
@@ -19,7 +18,7 @@
 
             <TextBlock x:Name="StatusTextBlock" HorizontalAlignment="Left" FontSize="16"
                        Text="Choose a CSV file to display its contents." />
-        
+
             <StackPanel Spacing="4">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="8">
                     <AutoCompleteBox
@@ -39,7 +38,7 @@
                         Text="" />
                 </StackPanel>
             </StackPanel>
-        
+
         </StackPanel>
         <DataGrid
             x:Name="CsvDataGrid"

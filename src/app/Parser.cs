@@ -16,7 +16,7 @@ public class Parser
     public IReadOnlyList<string> Headers { get; private set; } = Array.Empty<string>();
 
     /// <summary>
-    ///     Asynchronously enumerates raw lines from a CSV file or decompressed GZIP stream.
+    ///     Asynchronously lists raw lines from a CSV file or decompressed GZIP stream.
     /// </summary>
     private async IAsyncEnumerator<string> ParserLineEnumerator(string filePath)
     {
@@ -75,7 +75,7 @@ public class Parser
     }
 
     /// <summary>
-    ///     Reads a bounded range of CSV rows and converts them into dictionaries keyed by header name.
+    ///     Reads a bounded range of CSV rows and converts them into dictionaries keyed by the header name.
     /// </summary>
     public async Task<ObservableCollection<Dictionary<string, string>>> ReadRangeAsync(
         string filePath,
@@ -101,7 +101,7 @@ public class Parser
 
             if (currentRowNumber < startRow) continue;
 
-            if (currentRowNumber > endRow || rows.Count > maxRows) break;
+            if (currentRowNumber > endRow || rows.Count >= maxRows) break;
 
             rows.Add(BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber));
         }
@@ -109,6 +109,9 @@ public class Parser
         return rows;
     }
 
+    /// <summary>
+    ///     Reads rows that satisfy the supplied predicate, up to the requested maximum number of rows.
+    /// </summary>
     /// <summary>
     ///     Reads rows that satisfy the supplied predicate, up to the requested maximum number of rows.
     /// </summary>
@@ -134,12 +137,12 @@ public class Parser
             currentRowNumber++;
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
-            
+
             if (!predicate(row)) continue;
 
             rows.Add(row);
 
-            if (rows.Count > maxRows) break;
+            if (rows.Count >= maxRows) break;
         }
 
         return rows;
@@ -148,10 +151,23 @@ public class Parser
     /// <summary>
     ///     Finds the first occurrence of the specified text in the CSV data, optionally within a single header.
     /// </summary>
-    public async Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindFirstAsync(
+    public Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindFirstAsync(
         string filePath,
         string searchText,
         string? searchHeader = null)
+    {
+        return FindNextAsync(filePath, searchText, searchHeader);
+    }
+
+    /// <summary>
+    ///     Finds the next occurrence of the specified text after the supplied row and header.
+    /// </summary>
+    public async Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindNextAsync(
+        string filePath,
+        string searchText,
+        string? searchHeader = null,
+        int startAfterRowNumber = 0,
+        string? startAfterHeader = null)
     {
         if (string.IsNullOrWhiteSpace(searchText)) return null;
 
@@ -175,6 +191,12 @@ public class Parser
                     .Where(header => header.Equals(searchHeader, StringComparison.OrdinalIgnoreCase))
                     .ToArray();
 
+        var startAfterHeaderIndex = string.IsNullOrWhiteSpace(startAfterHeader)
+            ? -1
+            : Array.FindIndex(
+                headersToSearch,
+                header => header.Equals(startAfterHeader, StringComparison.OrdinalIgnoreCase));
+
         var headerRow = new Dictionary<string, string>
         {
             [RowNumberKey] = currentRowNumber.ToString()
@@ -182,13 +204,15 @@ public class Parser
 
         foreach (var header in Headers) headerRow[header] = header;
 
-        foreach (var header in headersToSearch)
-        {
-            if (!headerRow.TryGetValue(header, out var value)) continue;
+        var headerMatch = FindMatchInRow(
+            headerRow,
+            headersToSearch,
+            searchText,
+            currentRowNumber,
+            startAfterRowNumber,
+            startAfterHeaderIndex);
 
-            if (value.Contains(searchText, StringComparison.OrdinalIgnoreCase))
-                return (headerRow, header, currentRowNumber);
-        }
+        if (headerMatch is not null) return headerMatch;
 
         while (await enumerator.MoveNextAsync())
         {
@@ -196,13 +220,45 @@ public class Parser
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
 
-            foreach (var header in headersToSearch)
-            {
-                if (!row.TryGetValue(header, out var value)) continue;
+            var match = FindMatchInRow(
+                row,
+                headersToSearch,
+                searchText,
+                currentRowNumber,
+                startAfterRowNumber,
+                startAfterHeaderIndex);
 
-                if (value.Contains(searchText, StringComparison.OrdinalIgnoreCase))
-                    return (row, header, currentRowNumber);
-            }
+            if (match is not null) return match;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    ///     Finds a matching value in the supplied row while respecting the requested starting position.
+    /// </summary>
+    private static (Dictionary<string, string> Row, string Header, int RowNumber)? FindMatchInRow(
+        Dictionary<string, string> row,
+        IReadOnlyList<string> headersToSearch,
+        string searchText,
+        int currentRowNumber,
+        int startAfterRowNumber,
+        int startAfterHeaderIndex)
+    {
+        if (currentRowNumber < startAfterRowNumber) return null;
+
+        var firstHeaderIndex = currentRowNumber == startAfterRowNumber
+            ? startAfterHeaderIndex + 1
+            : 0;
+
+        for (var headerIndex = firstHeaderIndex; headerIndex < headersToSearch.Count; headerIndex++)
+        {
+            var header = headersToSearch[headerIndex];
+
+            if (!row.TryGetValue(header, out var value)) continue;
+
+            if (value.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                return (row, header, currentRowNumber);
         }
 
         return null;
