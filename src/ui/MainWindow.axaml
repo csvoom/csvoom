@@ -46,7 +46,8 @@
             AutoGenerateColumns="False"
             IsReadOnly="True"
             GridLinesVisibility="All"
-            HeadersVisibility="All">
+            HeadersVisibility="All"
+            >
             <DataGrid.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="Click Me" />

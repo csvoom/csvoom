@@ -633,7 +633,7 @@ for (var offset = 1; offset <= totalCells; offset++)
             Binding = new Binding($"[{Parser.RowNumberKey}]"),
             SortMemberPath = $"[{Parser.RowNumberKey}]",
             IsReadOnly = true,
-            CanUserSort = false
+            CanUserSort = false,
         };
         CsvDataGrid.Columns.Add(rowNumberColumn);
         _columnsByName[Parser.RowNumberKey] = rowNumberColumn;
@@ -653,6 +653,8 @@ for (var offset = 1; offset <= totalCells; offset++)
             _columnsByLetter[columnLetter] = column;
         }
 
+        FreezeRowNumberColumn();
+
         await LoadRangeIntoViewAsync(1, MaxVisibleRows);
     }
 
@@ -664,6 +666,14 @@ for (var offset = 1; offset <= totalCells; offset++)
     private void ShowAllColumns()
     {
         foreach (var column in CsvDataGrid.Columns) column.IsVisible = true;
+    }
+
+    /// <summary>
+    ///     Keeps the row-number column visible while horizontally scrolling data columns.
+    /// </summary>
+    private void FreezeRowNumberColumn()
+    {
+        CsvDataGrid.FrozenColumnCount = CsvDataGrid.Columns.Count > 0 ? 1 : 0;
     }
 
     /// <summary>
@@ -703,7 +713,7 @@ for (var offset = 1; offset <= totalCells; offset++)
             StatusTextBlock.Text = "Invalid row range.";
             return;
         }
-
+        
         if (endRow - startRow > MaxVisibleRows) endRow = startRow + MaxVisibleRows;
         _isLoading = true;
         try
