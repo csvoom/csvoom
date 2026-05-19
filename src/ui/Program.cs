@@ -1,14 +1,15 @@
-﻿using Avalonia;
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
+using Avalonia;
 
 namespace CSVoom;
 
 internal abstract class Program
 {
     private static readonly object LogLock = new();
+
     private static readonly string ErrorLogPath = Path.Combine(
         AppContext.BaseDirectory,
         "errors.log");
@@ -26,10 +27,7 @@ internal abstract class Program
             WriteErrorLog("Unhandled exception", e.ExceptionObject);
         };
 
-        TaskScheduler.UnobservedTaskException += (_, e) =>
-        {
-            WriteErrorLog("Unobserved task exception", e.Exception);
-        };
+        TaskScheduler.UnobservedTaskException += (_, e) => { WriteErrorLog("Unobserved task exception", e.Exception); };
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
@@ -46,23 +44,21 @@ internal abstract class Program
             File.AppendAllText(
                 ErrorLogPath,
                 $"""
-                [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {title}
-                {error}
+                 [{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {title}
+                 {error}
 
-                ------------------------------------------------------------
+                 ------------------------------------------------------------
 
-                """);
+                 """);
         }
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
     private static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
 #if DEBUG
-            .WithDeveloperTools()
+        .WithDeveloperTools()
 #endif
-            .UsePlatformDetect()
-            .WithInterFont()
-            .LogToTrace();
+        .UsePlatformDetect()
+        .WithInterFont()
+        .LogToTrace();
 }
-
-

@@ -1,15 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Threading.Tasks;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Data;
-using Avalonia.Platform.Storage;
-using Avalonia.Interactivity;
-using CSVoom.app;
 using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
+using CSVoom.app;
 
 namespace CSVoom;
 
@@ -19,16 +19,18 @@ public partial class MainWindow : Window
     private const int RowNumberColumnOffset = 1;
 
     private static readonly Parser Parser = new();
-    private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = new();
-    private readonly DataGridCollectionView _gridView;
-
-    private string? _currentFilePath;
-    private string? _currentFileName;
-    private bool _isLoading;
-
-    private readonly Dictionary<string, DataGridColumn> _columnsByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DataGridColumn> _columnsByLetter = new(StringComparer.OrdinalIgnoreCase);
-
+    private readonly Dictionary<string, DataGridColumn> _columnsByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DataGridCollectionView _gridView;
+    private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = new();
+    
+    private string? _currentFileName;
+    private string? _currentFilePath;
+    private bool _isLoading;
+    
+    /// <summary>
+    ///     Initializes the main window and connects the visible row collection to the data grid.
+    /// </summary>
     public MainWindow()
     {
         InitializeComponent();
@@ -36,12 +38,15 @@ public partial class MainWindow : Window
         CsvDataGrid.ItemsSource = _gridView;
     }
 
-    // Column discovery helper methods
+    // Utility
+    
+    /// <summary>
+    ///     Converts a zero-based data column index into its spreadsheet-style column letter.
+    /// </summary>
     private static string GetColumnLetter(int columnIndex)
     {
         var letter = string.Empty;
         columnIndex++;
-
         while (columnIndex > 0)
         {
             columnIndex--;
@@ -52,42 +57,43 @@ public partial class MainWindow : Window
         return letter;
     }
 
+    /// <summary>
+    ///     Finds a data grid column by its display name or spreadsheet-style column letter.
+    /// </summary>
     private DataGridColumn? FindColumnByNameOrLetter(string searchValue)
     {
-        if (string.IsNullOrWhiteSpace(searchValue))
-        {
-            return null;
-        }
-
+        if (string.IsNullOrWhiteSpace(searchValue)) return null;
         var normalizedSearchValue = searchValue.Trim();
-
-        if (_columnsByName.TryGetValue(normalizedSearchValue, out var columnByName))
-        {
-            return columnByName;
-        }
-
+        if (_columnsByName.TryGetValue(normalizedSearchValue, out var columnByName)) return columnByName;
         return _columnsByLetter.GetValueOrDefault(normalizedSearchValue);
     }
 
+    /// <summary>
+    ///     Finds the data grid column index for the specified column name or letter.
+    /// </summary>
     private int FindColumnIndexByNameOrLetter(string searchValue)
     {
         var column = FindColumnByNameOrLetter(searchValue);
         return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
     }
 
+    /// <summary>
+    ///     Converts a grid column index to the corresponding parser data column index.
+    /// </summary>
     private int ToDataColumnIndex(int gridColumnIndex)
     {
         return gridColumnIndex - RowNumberColumnOffset;
-    }
+    } 
     
-    // Command handler methods
+    // Commands
+    
+    /// <summary>
+    ///     Parses and executes a command entered by the user.
+    /// </summary>
     private async Task ExecuteCommandAsync(string commandText)
-    { // Interprets text command and executes the corresponding action
-        if (string.IsNullOrWhiteSpace(commandText))
-        {
-            return;
-        }
-        
+    {
+        // Interprets text command and executes the corresponding action
+        if (string.IsNullOrWhiteSpace(commandText)) return;
         if (CsvDataGrid.Columns.Count == 0)
         {
             StatusTextBlock.Text = "Open a CSV file before running any commands.";
@@ -97,13 +103,12 @@ public partial class MainWindow : Window
         var parts = commandText.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         var command = parts[0];
         var arguments = parts.Length > 1 ? parts[1] : string.Empty;
-
         if (command.Equals("load", StringComparison.OrdinalIgnoreCase))
         {
             await Command_LoadAsync(arguments);
             return;
         }
-        
+
         if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
         {
             await Command_FindAsync(arguments);
@@ -131,16 +136,20 @@ public partial class MainWindow : Window
         StatusTextBlock.Text = $"Unknown command: {command}";
     }
 
+    /// <summary>
+    ///     Handles the load command by parsing a row range and loading it into the view.
+    /// </summary>
     private async Task Command_LoadAsync(string arguments)
-    { // Loads a specified range of rows from the CSV file into the view
+    {
+        // Loads a specified range of rows from the CSV file into the view
         if (string.IsNullOrWhiteSpace(arguments))
         {
             StatusTextBlock.Text = "Usage: load 1:10000";
             return;
         }
 
-        var rangeParts = arguments.Split(':', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-
+        var rangeParts =
+            arguments.Split(':', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (rangeParts.Length != 2
             || !int.TryParse(rangeParts[0], out var startRow)
             || !int.TryParse(rangeParts[1], out var endRow)
@@ -154,8 +163,12 @@ public partial class MainWindow : Window
         await LoadRangeIntoViewAsync(startRow, endRow);
     }
 
+    /// <summary>
+    ///     Handles the find command by locating the first matching cell and scrolling it into view.
+    /// </summary>
     private async Task Command_FindAsync(string searchText)
-    { // Searches for the specified text within the CSV data and highlights the first match
+    {
+        // Searches for the specified text within the CSV data and highlights the first match
         if (CsvDataGrid.Columns.Count == 0 || _currentFilePath is null)
         {
             StatusTextBlock.Text = "Open a CSV file before running find commands.";
@@ -168,15 +181,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        var findParts = searchText.Trim().Split(' ', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var findParts = searchText.Trim()
+            .Split(' ', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         searchText = findParts[0];
         var columnSearchValue = findParts.Length > 1 ? findParts[1] : string.Empty;
         string? searchHeader = null;
-
         if (!string.IsNullOrWhiteSpace(columnSearchValue))
         {
             var columnIndex = FindColumnIndexByNameOrLetter(columnSearchValue);
-
             if (columnIndex < 0)
             {
                 StatusTextBlock.Text = $"Column not found: {columnSearchValue}";
@@ -193,39 +205,32 @@ public partial class MainWindow : Window
             : searchHeader == Parser.RowNumberKey
                 ? $"Searching for \"{searchText}\" in row numbers..."
                 : $"Searching for \"{searchText}\" in column {searchHeader}...";
-
         var match = await Parser.FindFirstAsync(_currentFilePath, searchText, searchHeader);
-
         if (match is null)
         {
             StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-            ? $"No matches found for \"{searchText}\"."
-            : searchHeader == Parser.RowNumberKey
-                ? $"No matches found for \"{searchText}\" in row numbers."
-                : $"No matches found for \"{searchText}\" in column {searchHeader}.";
+                ? $"No matches found for \"{searchText}\"."
+                : searchHeader == Parser.RowNumberKey
+                    ? $"No matches found for \"{searchText}\" in row numbers."
+                    : $"No matches found for \"{searchText}\" in column {searchHeader}.";
             return;
         }
 
         var foundRowNumber = match.Value.RowNumber;
         var windowStart = Math.Max(1, foundRowNumber - 20);
         var windowEnd = windowStart + MaxVisibleRows - 1;
-
         var rows = await Parser.ReadRangeAsync(_currentFilePath, windowStart, windowEnd, MaxVisibleRows);
         ReplaceVisibleRows(rows);
-
         var visibleMatch = _visibleRows.FirstOrDefault(row =>
             row.TryGetValue(Parser.RowNumberKey, out var rowNumberText)
             && int.TryParse(rowNumberText, out var rowNumber)
             && rowNumber == foundRowNumber);
-
         var column = match.Value.Header == Parser.RowNumberKey
             ? CsvDataGrid.Columns[0]
             : FindColumnByNameOrLetter(match.Value.Header);
-
         if (column is not null)
         {
             column.IsVisible = true;
-
             if (visibleMatch is not null)
             {
                 CsvDataGrid.SelectedItem = visibleMatch;
@@ -242,14 +247,17 @@ public partial class MainWindow : Window
         var foundColumnText = match.Value.Header == Parser.RowNumberKey
             ? "row numbers"
             : match.Value.Header;
-
         StatusTextBlock.Text = foundRowNumber == 1
             ? $"Found \"{searchText}\" in the header row, column {foundColumnText}."
             : $"Found \"{searchText}\" at row {foundRowNumber:N0}, column {foundColumnText}.";
     }
-    
+
+    /// <summary>
+    ///     Handles the filter command by applying or clearing the current grid filter.
+    /// </summary>
     private void Command_Filter(string arguments)
-    { // Applies a filter to the CSV data based on user input
+    {
+        // Applies a filter to the CSV data based on user input
         if (string.IsNullOrWhiteSpace(arguments))
         {
             StatusTextBlock.Text = "Usage: filter word, filter columnName, or filter clear";
@@ -257,7 +265,6 @@ public partial class MainWindow : Window
         }
 
         var filterText = arguments.Trim();
-
         if (filterText.Equals("clear", StringComparison.OrdinalIgnoreCase))
         {
             _gridView.Filter = null;
@@ -268,25 +275,15 @@ public partial class MainWindow : Window
 
         var matchingHeader = Parser.Headers.FirstOrDefault(header =>
             header.Equals(filterText, StringComparison.OrdinalIgnoreCase));
-
         if (matchingHeader is not null)
         {
             _gridView.Filter = item =>
             {
-                if (item is not Dictionary<string, string> row)
-                {
-                    return false;
-                }
-
-                if (!row.TryGetValue(matchingHeader, out var value))
-                {
-                    return false;
-                }
-
+                if (item is not Dictionary<string, string> row) return false;
+                if (!row.TryGetValue(matchingHeader, out var value)) return false;
                 return !string.IsNullOrWhiteSpace(value)
-                    && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase);
+                       && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase);
             };
-
             _gridView.Refresh();
             StatusTextBlock.Text = $"Filtered rows where column \"{matchingHeader}\" is not empty and not \\N.";
             return;
@@ -294,22 +291,13 @@ public partial class MainWindow : Window
 
         _gridView.Filter = item =>
         {
-            if (item is not Dictionary<string, string> row)
-            {
-                return false;
-            }
+            if (item is not Dictionary<string, string> row) return false;
 
             foreach (var header in Parser.Headers)
             {
-                if (!row.TryGetValue(header, out var value))
-                {
-                    continue;
-                }
+                if (!row.TryGetValue(header, out var value)) continue;
 
-                if (value.Contains(filterText, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
+                if (value.Contains(filterText, StringComparison.OrdinalIgnoreCase)) return true;
             }
 
             return false;
@@ -319,6 +307,9 @@ public partial class MainWindow : Window
         StatusTextBlock.Text = $"Filtered rows containing \"{filterText}\".";
     }
 
+    /// <summary>
+    ///     Handles the hide command by hiding a single column or a range of columns.
+    /// </summary>
     private void Command_Hide(string arguments)
     {
         if (string.IsNullOrWhiteSpace(arguments))
@@ -327,8 +318,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var rangeParts = arguments.Split(':', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-
+        var rangeParts =
+            arguments.Split(':', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (rangeParts.Length == 1)
         {
             var column = FindColumnByNameOrLetter(rangeParts[0]);
@@ -345,7 +336,6 @@ public partial class MainWindow : Window
 
         var startIndex = FindColumnIndexByNameOrLetter(rangeParts[0]);
         var endIndex = FindColumnIndexByNameOrLetter(rangeParts[1]);
-
         if (startIndex < 0)
         {
             StatusTextBlock.Text = $"Column not found: {rangeParts[0]}";
@@ -358,20 +348,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (startIndex > endIndex)
-        {
-            (startIndex, endIndex) = (endIndex, startIndex);
-        }
-
-        for (var i = startIndex; i <= endIndex; i++)
-        {
-            CsvDataGrid.Columns[i].IsVisible = false;
-        }
-
+        if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
+        for (var i = startIndex; i <= endIndex; i++) CsvDataGrid.Columns[i].IsVisible = false;
         StatusTextBlock.Text =
             $"Hidden columns {GetColumnLetter(ToDataColumnIndex(startIndex))}:{GetColumnLetter(ToDataColumnIndex(endIndex))}.";
     }
 
+    /// <summary>
+    ///     Handles the unhide command and restores hidden columns when requested.
+    /// </summary>
     private void Command_Unhide(string arguments)
     {
         if (arguments.Equals("all", StringComparison.OrdinalIgnoreCase))
@@ -383,26 +368,32 @@ public partial class MainWindow : Window
 
         StatusTextBlock.Text = "Usage: unhide all / unhide a:b / unhide columnName1:columnName2";
     }
+
+    // UI interaction
     
-    // UI interaction methods
+    /// <summary>
+    ///     Runs the command currently entered in the command text box.
+    /// </summary>
     private async void RunCommandButton_Click(object? sender, RoutedEventArgs e)
     {
         await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
         CommandTextBox.SelectAll();
     }
 
+    /// <summary>
+    ///     Runs the entered command when the user presses Enter in the command text box.
+    /// </summary>
     private async void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter)
-        {
-            return;
-        }
-
+        if (e.Key != Key.Enter) return;
         await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
         CommandTextBox.SelectAll();
         e.Handled = true;
     }
 
+    /// <summary>
+    ///     Opens a file picker, loads the selected CSV or GZIP file, and initializes the data grid columns.
+    /// </summary>
     private async void OpenCsvButton_Click(object? sender, RoutedEventArgs e)
     {
         var topLevel = GetTopLevel(this);
@@ -424,12 +415,7 @@ public partial class MainWindow : Window
                 }
             ]
         });
-
-        if (files.Count == 0)
-        {
-            return;
-        }
-
+        if (files.Count == 0) return;
         _currentFilePath = files[0].Path.LocalPath;
         _currentFileName = files[0].Name;
         _gridView.Filter = null;
@@ -437,15 +423,11 @@ public partial class MainWindow : Window
         CsvDataGrid.Columns.Clear();
         _columnsByName.Clear();
         _columnsByLetter.Clear();
-
         StatusTextBlock.Text = $"Loading {_currentFileName}...";
-
         await Parser.ReadHeadersAsync(_currentFilePath);
-
         CsvDataGrid.Columns.Clear();
         _columnsByName.Clear();
         _columnsByLetter.Clear();
-
         var rowNumberColumn = new DataGridTextColumn
         {
             Header = "1",
@@ -454,23 +436,19 @@ public partial class MainWindow : Window
             IsReadOnly = true,
             CanUserSort = false
         };
-
         CsvDataGrid.Columns.Add(rowNumberColumn);
         _columnsByName[Parser.RowNumberKey] = rowNumberColumn;
         _columnsByLetter["1"] = rowNumberColumn;
-
         for (var i = 0; i < Parser.Headers.Count; i++)
         {
             var header = Parser.Headers[i];
             var columnLetter = GetColumnLetter(i);
-
             var column = new DataGridTextColumn
             {
                 Header = $"{columnLetter}: {header}",
                 Binding = new Binding($"[{header}]"),
                 SortMemberPath = $"[{header}]"
             };
-
             CsvDataGrid.Columns.Add(column);
             _columnsByName[header] = column;
             _columnsByLetter[columnLetter] = column;
@@ -479,47 +457,43 @@ public partial class MainWindow : Window
         await LoadRangeIntoViewAsync(1, MaxVisibleRows);
     }
 
+    /// <summary>
+    ///     Restores visibility for every column in the data grid.
+    /// </summary>
     private void UnhideAllColumnsButton_Click(object? sender, RoutedEventArgs e)
     {
         ShowAllColumns();
     }
 
-    // DataGrid handling methods
+    // UI actions
+    
+    /// <summary>
+    ///     Makes all data grid columns visible.
+    /// </summary>
     private void ShowAllColumns()
     {
-        foreach (var column in CsvDataGrid.Columns)
-        {
-            column.IsVisible = true;
-        }
+        foreach (var column in CsvDataGrid.Columns) column.IsVisible = true;
     }
-    
+
+    /// <summary>
+    ///     Loads the requested row range from the current file into the visible grid collection.
+    /// </summary>
     private async Task LoadRangeIntoViewAsync(int startRow, int endRow)
     {
-        if (_currentFilePath is null || _isLoading)
-        {
-            return;
-        }
-
+        if (_currentFilePath is null || _isLoading) return;
         if (startRow <= 0 || endRow < startRow)
         {
             StatusTextBlock.Text = "Invalid row range.";
             return;
         }
 
-        if (endRow - startRow > MaxVisibleRows)
-        {
-            endRow = startRow + MaxVisibleRows;
-        }
-
+        if (endRow - startRow > MaxVisibleRows) endRow = startRow + MaxVisibleRows;
         _isLoading = true;
-
         try
         {
             StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
-
             var rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow, MaxVisibleRows);
             ReplaceVisibleRows(rows);
-
             if (rows.Count == 0)
             {
                 StatusTextBlock.Text = $"No rows found in range {startRow:N0}:{endRow:N0}.";
@@ -534,15 +508,13 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    ///     Replaces the currently visible rows and refreshes the grid view.
+    /// </summary>
     private void ReplaceVisibleRows(IEnumerable<Dictionary<string, string>> rows)
     {
         _visibleRows.Clear();
-
-        foreach (var row in rows)
-        {
-            _visibleRows.Add(row);
-        }
-
+        foreach (var row in rows) _visibleRows.Add(row);
         _gridView.Refresh();
     }
 }

@@ -5,8 +5,8 @@ namespace CSVoom.app;
 
 public class ParserTests(ITestOutputHelper testOutputHelper)
 {
-    private readonly ITestOutputHelper _testOutputHelper = testOutputHelper;
     private readonly Parser _parser = new();
+    private readonly ITestOutputHelper _testOutputHelper = testOutputHelper;
 
     [Fact]
     public void TestXUnit()
@@ -35,10 +35,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
         finally
         {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
 
@@ -61,23 +58,20 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 "5"
             ]);
 
-        var rows = await _parser.ReadRangeAsync(filePath, 2, 4, 1000);
+            var rows = await _parser.ReadRangeAsync(filePath, 2, 4, 1000);
 
-        Assert.Equal(3, rows.Count);
-        Assert.Equal("1", rows[0]["value"]);
-        Assert.Equal("2", rows[1]["value"]);
-        Assert.Equal("3", rows[2]["value"]);
-        Assert.Equal("2", rows[0][Parser.RowNumberKey]);
-        Assert.Equal("4", rows[2][Parser.RowNumberKey]);
+            Assert.Equal(3, rows.Count);
+            Assert.Equal("1", rows[0]["value"]);
+            Assert.Equal("2", rows[1]["value"]);
+            Assert.Equal("3", rows[2]["value"]);
+            Assert.Equal("2", rows[0][Parser.RowNumberKey]);
+            Assert.Equal("4", rows[2][Parser.RowNumberKey]);
         }
         finally
         {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
-}
+    }
 
     [Fact]
     public async Task TestReadRangeCapsAtMaxRows()
@@ -106,10 +100,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
         finally
         {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
 
@@ -132,10 +123,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
         finally
         {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
 
@@ -159,7 +147,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var rows = await _parser.ReadMatchingRowsAsync(
                 filePath,
                 row => row.TryGetValue("city", out var city)
-                    && city.Equals("London", StringComparison.OrdinalIgnoreCase),
+                       && city.Equals("London", StringComparison.OrdinalIgnoreCase),
                 1000);
 
             Assert.Equal(2, rows.Count);
@@ -168,10 +156,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
         finally
         {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
 
@@ -192,84 +177,75 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 "Charlie,Berlin"
             ]);
 
-        var match = await _parser.FindFirstAsync(filePath, "paris");
+            var match = await _parser.FindFirstAsync(filePath, "paris");
 
-        Assert.NotNull(match);
-        Assert.Equal(3, match.Value.RowNumber);
-        Assert.Equal("city", match.Value.Header);
-        Assert.Equal("Bob", match.Value.Row["name"]);
-        Assert.Equal("Paris", match.Value.Row["city"]);
+            Assert.NotNull(match);
+            Assert.Equal(3, match.Value.RowNumber);
+            Assert.Equal("city", match.Value.Header);
+            Assert.Equal("Bob", match.Value.Row["name"]);
+            Assert.Equal("Paris", match.Value.Row["city"]);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
     }
-    finally
+
+    [Fact]
+    public async Task TestFindFirstSearchesOnlyRequestedColumn()
     {
-        if (File.Exists(filePath))
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
         {
-            File.Delete(filePath);
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Paris,London",
+                "Bob,Paris"
+            ]);
+
+            var match = await _parser.FindFirstAsync(filePath, "paris", "city");
+
+            Assert.NotNull(match);
+            Assert.Equal(3, match.Value.RowNumber);
+            Assert.Equal("city", match.Value.Header);
+            Assert.Equal("Bob", match.Value.Row["name"]);
+            Assert.Equal("Paris", match.Value.Row["city"]);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
-}
 
-        [Fact]
-        public async Task TestFindFirstSearchesOnlyRequestedColumn()
+    [Fact]
+    public async Task TestFindFirstReturnsNullWhenRequestedColumnDoesNotExist()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
         {
-            var filePath = Path.GetTempFileName();
-            File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-            filePath = Path.ChangeExtension(filePath, ".csv");
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris"
+            ]);
 
-            try
-            {
-                await File.WriteAllLinesAsync(filePath,
-                [
-                    "name,city",
-                    "Paris,London",
-                    "Bob,Paris"
-                ]);
+            var match = await _parser.FindFirstAsync(filePath, "paris", "country");
 
-                var match = await _parser.FindFirstAsync(filePath, "paris", "city");
-
-                Assert.NotNull(match);
-                Assert.Equal(3, match.Value.RowNumber);
-                Assert.Equal("city", match.Value.Header);
-                Assert.Equal("Bob", match.Value.Row["name"]);
-                Assert.Equal("Paris", match.Value.Row["city"]);
-            }
-            finally
-            {
-                if (File.Exists(filePath))
-                {
-                    File.Delete(filePath);
-                }
-            }
+            Assert.Null(match);
         }
-
-        [Fact]
-        public async Task TestFindFirstReturnsNullWhenRequestedColumnDoesNotExist()
+        finally
         {
-            var filePath = Path.GetTempFileName();
-            File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-            filePath = Path.ChangeExtension(filePath, ".csv");
-
-            try
-            {
-                await File.WriteAllLinesAsync(filePath,
-                [
-                    "name,city",
-                    "Alice,London",
-                    "Bob,Paris"
-                ]);
-
-                var match = await _parser.FindFirstAsync(filePath, "paris", "country");
-
-                Assert.Null(match);
-            }
-            finally
-            {
-                if (File.Exists(filePath))
-                {
-                    File.Delete(filePath);
-                }
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
+    }
 
     [Fact]
     public async Task TestFindFirstReturnsNullWhenNoMatchExists()
@@ -293,10 +269,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
         finally
         {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
 
@@ -324,10 +297,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
         finally
         {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
 
@@ -342,10 +312,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         {
             var lines = new List<string> { "value" };
 
-            for (var i = 2; i <= 105; i++)
-            {
-                lines.Add($"row-{i}");
-            }
+            for (var i = 2; i <= 105; i++) lines.Add($"row-{i}");
 
             await File.WriteAllLinesAsync(filePath, lines);
 
@@ -360,10 +327,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
         finally
         {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
+            if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
 }
