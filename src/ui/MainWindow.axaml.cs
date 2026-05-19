@@ -17,8 +17,28 @@ public partial class MainWindow : Window
 {
     private const int MaxVisibleRows = 10000;
     private const int RowNumberColumnOffset = 1;
+    private static readonly IReadOnlyList<string> CommandSuggestions =
+    [
+        "load ",
+        "find ",
+        "filter ",
+        "filter clear",
+        "hide ",
+        "unhide all"
+    ];
 
+    private static readonly IReadOnlyDictionary<string, string> CommandExamples =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["load"] = "Arguments: rangeStart:rangeEnd",
+            ["find"] = "Arguments: word / word columnName / columnName",
+            ["filter"] = "Arguments: word / columnName / 'clear'",
+            ["hide"] = "Arguments: letter:letter / columnName1:columnName2",
+            ["unhide"] = "Arguments: all"
+        };
+    
     private static readonly Parser Parser = new();
+
     private readonly Dictionary<string, DataGridColumn> _columnsByLetter = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DataGridColumn> _columnsByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly DataGridCollectionView _gridView;
@@ -34,6 +54,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        CommandTextBox.ItemsSource = CommandSuggestions;
         _gridView = new DataGridCollectionView(_visibleRows);
         CsvDataGrid.ItemsSource = _gridView;
     }
@@ -273,10 +294,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var matchingHeader = Parser.Headers.FirstOrDefault(header =>
-            header.Equals(filterText, StringComparison.OrdinalIgnoreCase));
-        if (matchingHeader is not null)
+        var matchingColumnIndex = FindColumnIndexByNameOrLetter(filterText);
+        if (matchingColumnIndex > 0)
         {
+            var matchingHeader = Parser.Headers[ToDataColumnIndex(matchingColumnIndex)];
             _gridView.Filter = item =>
             {
                 if (item is not Dictionary<string, string> row) return false;
@@ -377,7 +398,6 @@ public partial class MainWindow : Window
     private async void RunCommandButton_Click(object? sender, RoutedEventArgs e)
     {
         await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
-        CommandTextBox.SelectAll();
     }
 
     /// <summary>
@@ -387,8 +407,23 @@ public partial class MainWindow : Window
     {
         if (e.Key != Key.Enter) return;
         await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
-        CommandTextBox.SelectAll();
         e.Handled = true;
+    }
+
+    /// <summary>
+    ///     Shows an argument example for a recognized command without changing the user's input.
+    /// </summary>
+    private void CommandTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var commandText = CommandTextBox.Text ?? string.Empty;
+        var command = commandText.TrimStart()
+            .Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        CommandExampleTextBlock.Text = command is not null
+                                           && CommandExamples.TryGetValue(command, out var example)
+                ? example
+                : string.Empty;
     }
 
     /// <summary>
@@ -455,14 +490,6 @@ public partial class MainWindow : Window
         }
 
         await LoadRangeIntoViewAsync(1, MaxVisibleRows);
-    }
-
-    /// <summary>
-    ///     Restores visibility for every column in the data grid.
-    /// </summary>
-    private void UnhideAllColumnsButton_Click(object? sender, RoutedEventArgs e)
-    {
-        ShowAllColumns();
     }
 
     // UI actions
