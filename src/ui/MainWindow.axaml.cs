@@ -15,6 +15,7 @@ namespace CSVoom;
 
 public partial class MainWindow : Window
 {
+    private readonly List<string> _appliedFilters = new();
     private const int MaxVisibleRows = 10000;
     private const int RowNumberColumnOffset = 1;
     private static readonly IReadOnlyList<string> CommandSuggestions =
@@ -57,7 +58,7 @@ public partial class MainWindow : Window
 
     private string? _lastGotoSearchText;
     private string? _lastGotoSearchHeader;
-    private int _lastGotoRowNumber = 0;
+    private int _lastGotoRowNumber;
     private string? _lastGotoHeader;
 
     /// <summary>
@@ -72,6 +73,7 @@ public partial class MainWindow : Window
     }
 
     // Utility
+    
 
     /// <summary>
     ///     Clears cached find and goto positions so the next command starts from the first match again.
@@ -133,7 +135,7 @@ public partial class MainWindow : Window
     {
         return gridColumnIndex - RowNumberColumnOffset;
     }
-
+    
     // Commands
 
     /// <summary>
@@ -482,7 +484,6 @@ for (var offset = 1; offset <= totalCells; offset++)
 
                 if (value.Contains(filterText, StringComparison.OrdinalIgnoreCase)) return true;
             }
-
             return false;
         };
 

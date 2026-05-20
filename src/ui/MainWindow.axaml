@@ -7,20 +7,23 @@
         d:DesignHeight="450"
         x:Class="CSVoom.MainWindow"
         Title="CSVoom">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+                <StackPanel 
+                    Grid.Row="0"
+                    Margin="8,8,8,8"
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right" 
+                    Spacing="8">
+                    <Button Content="Open CSV" Click="OpenCsvButton_Click" />
+                </StackPanel>
 
-    <DockPanel Margin="12">
-        <StackPanel DockPanel.Dock="Top" Spacing="8">
-            <TextBlock FontSize="24" HorizontalAlignment="Left" Text="CSVoom" />
-
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
-                <Button Content="Open CSV" Click="OpenCsvButton_Click" />
-            </StackPanel>
-
-            <TextBlock x:Name="StatusTextBlock" HorizontalAlignment="Left" FontSize="16"
-                       Text="Choose a CSV file to display its contents." />
-
-            <StackPanel Spacing="4">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="8">
+                <StackPanel 
+                    Grid.Row="0"
+                    Margin="8,8,8,8"
+                    Spacing="4" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Left">
+                    <Button Content="Run" Click="RunCommandButton_Click" />
                     <AutoCompleteBox
                         x:Name="CommandTextBox"
                         PlaceholderText="Command. eg: load, filter, find..."
@@ -29,30 +32,28 @@
                         HorizontalAlignment="Stretch"
                         MinWidth="320"
                         MinimumPrefixLength="0" />
-                    <Button Content="Run" Click="RunCommandButton_Click" />
-                    <TextBlock
+                    <TextBlock                            
                         x:Name="CommandExampleTextBlock"
                         HorizontalAlignment="Left"
                         Opacity="0.7"
                         FontSize="13"
                         Text="" />
                 </StackPanel>
-            </StackPanel>
-
-        </StackPanel>
-        <DataGrid
-            x:Name="CsvDataGrid"
-            CanUserSortColumns="False"
-            AutoGenerateColumns="False"
-            IsReadOnly="True"
-            GridLinesVisibility="All"
-            HeadersVisibility="All"
-            >
-            <DataGrid.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="Click Me" />
-                </ContextMenu>
-            </DataGrid.ContextMenu>
-        </DataGrid>
-    </DockPanel>
+            <DataGrid
+                Grid.Row="2"
+                x:Name="CsvDataGrid"
+                CanUserSortColumns="False"
+                AutoGenerateColumns="False"
+                IsReadOnly="True"
+                GridLinesVisibility="All"
+                HeadersVisibility="All">
+            </DataGrid>
+            <TextBlock 
+                Grid.Row="3"
+                Margin="8,8,8,8"
+                x:Name="StatusTextBlock" 
+                HorizontalAlignment="Left" 
+                FontSize="16"
+                Text="Choose a CSV file to display its contents." />
+        </Grid>
 </Window>
