@@ -3,57 +3,47 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        d:DesignWidth="800"
-        d:DesignHeight="450"
+        WindowState="Maximized"
         x:Class="CSVoom.MainWindow"
         Title="CSVoom">
-        <Grid RowDefinitions="Auto,Auto,*,Auto">
-                <StackPanel 
-                    Grid.Row="0"
-                    Margin="8,8,8,8"
-                    Orientation="Horizontal" 
-                    HorizontalAlignment="Right" 
-                    Spacing="8">
-                    <Button Content="Open CSV" Click="OpenCsvButton_Click" />
-                </StackPanel>
-
-                <StackPanel 
-                    Grid.Row="0"
-                    Margin="8,8,8,8"
-                    Spacing="4" 
-                    Orientation="Horizontal" 
-                    HorizontalAlignment="Left">
-                    <Button Content="Run" Click="RunCommandButton_Click" />
-                    <AutoCompleteBox
-                        x:Name="CommandTextBox"
-                        PlaceholderText="Command. eg: load, filter, find..."
-                        KeyDown="CommandTextBox_KeyDown"
-                        TextChanged="CommandTextBox_TextChanged"
-                        HorizontalAlignment="Stretch"
-                        MinWidth="320"
-                        MinimumPrefixLength="0" />
-                    <TextBlock                            
-                        x:Name="CommandExampleTextBlock"
-                        HorizontalAlignment="Left"
-                        Opacity="0.7"
-                        FontSize="13"
-                        Text="" />
-                </StackPanel>
-            <DataGrid
-                Grid.Row="2"
-                x:Name="CsvDataGrid"
-                CanUserSortColumns="False"
-                AutoGenerateColumns="False"
-                IsReadOnly="True"
-                GridLinesVisibility="All"
-                HeadersVisibility="All">
-            </DataGrid>
-            <TextBlock 
-                Grid.Row="3"
-                Margin="8,8,8,8"
-                x:Name="StatusTextBlock" 
-                HorizontalAlignment="Left" 
-                FontSize="16"
-                Text="Choose a CSV file to display its contents." />
-        </Grid>
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <StackPanel
+            Grid.Row="0"
+            Margin="8,8,8,8"
+            Orientation="Horizontal"
+            HorizontalAlignment="Right"
+            Spacing="8">
+            <TextBlock
+                x:Name="CommandExampleTextBlock"
+                HorizontalAlignment="Left"
+                Opacity="0.7"
+                FontSize="13"
+                Text="" />
+            <AutoCompleteBox
+                x:Name="CommandTextBox"
+                PlaceholderText="Command. eg: load, filter, find..."
+                KeyDown="CommandTextBox_KeyDown"
+                TextChanged="CommandTextBox_TextChanged"
+                HorizontalAlignment="Stretch"
+                MinWidth="320"
+                MinimumPrefixLength="0" />
+            <Button Content="Run" Click="RunCommandButton_Click" />
+            <Button Content="Open CSV" Click="OpenCsvButton_Click" />
+        </StackPanel>
+        <DataGrid
+            Grid.Row="2"
+            x:Name="CsvDataGrid"
+            CanUserSortColumns="False"
+            AutoGenerateColumns="False"
+            IsReadOnly="True"
+            GridLinesVisibility="All"
+            HeadersVisibility="All" />
+        <TextBlock
+            Grid.Row="3"
+            Margin="8,8,8,8"
+            x:Name="StatusTextBlock"
+            HorizontalAlignment="Left"
+            FontSize="16"
+            Text="Choose a CSV file to display its contents." />
+    </Grid>
 </Window>

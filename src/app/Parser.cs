@@ -11,6 +11,8 @@ namespace CSVoom.app;
 
 public class Parser
 {
+    // Variables & applied objects
+
     public const string RowNumberKey = "__CsvRowNumber";
 
     public IReadOnlyList<string> Headers { get; private set; } = Array.Empty<string>();
@@ -58,6 +60,8 @@ public class Parser
 
         Console.WriteLine("Unsupported file format: " + filePath);
     }
+
+    // Parser methods
 
     /// <summary>
     ///     Reads the first row of the file and stores it as the parser's header collection.
@@ -263,6 +267,8 @@ public class Parser
 
         return null;
     }
+
+    // Builder methods
 
     /// <summary>
     ///     Loads headers from the file if they have not already been read.

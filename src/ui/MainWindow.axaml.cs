@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -15,14 +16,13 @@ namespace CSVoom;
 
 public partial class MainWindow : Window
 {
-    private readonly List<string> _appliedFilters = new();
     private const int MaxVisibleRows = 10000;
     private const int RowNumberColumnOffset = 1;
+
     private static readonly IReadOnlyList<string> CommandSuggestions =
     [
         "load ",
         "find ",
-        "goto ",
         "filter ",
         "filter clear",
         "hide ",
@@ -32,11 +32,10 @@ public partial class MainWindow : Window
     private static readonly IReadOnlyDictionary<string, string> CommandExamples =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["load"] = "Arguments: rangeStart:rangeEnd",
+            ["load"] = "Arguments: start(int) / start(int) end(int)",
             ["find"] = "Arguments: word / word columnName / columnName",
-            ["goto"] = "Arguments: word / word columnName / columnName",
             ["filter"] = "Arguments: word / columnName / 'clear'",
-            ["hide"] = "Arguments: letter:letter / columnName1:columnName2",
+            ["hide"] = "Arguments: letter letter / columnName1 columnName2",
             ["unhide"] = "Arguments: all"
         };
 
@@ -49,18 +48,8 @@ public partial class MainWindow : Window
 
     private string? _currentFileName;
     private string? _currentFilePath;
-    private bool _isLoading;
-
-    private string? _lastFindSearchText;
-    private string? _lastFindSearchHeader;
-    private int _lastFindRowIndex = -1;
-    private int _lastFindHeaderIndex = -1;
-
-    private string? _lastGotoSearchText;
-    private string? _lastGotoSearchHeader;
-    private int _lastGotoRowNumber;
-    private string? _lastGotoHeader;
-
+    private bool _isBusy;
+    
     /// <summary>
     ///     Initializes the main window and connects the visible row collection to the data grid.
     /// </summary>
@@ -73,23 +62,6 @@ public partial class MainWindow : Window
     }
 
     // Utility
-    
-
-    /// <summary>
-    ///     Clears cached find and goto positions so the next command starts from the first match again.
-    /// </summary>
-    private void ResetSearchState()
-    {
-        _lastFindSearchText = null;
-        _lastFindSearchHeader = null;
-        _lastFindRowIndex = -1;
-        _lastFindHeaderIndex = -1;
-
-        _lastGotoSearchText = null;
-        _lastGotoSearchHeader = null;
-        _lastGotoRowNumber = 0;
-        _lastGotoHeader = null;
-    }
 
     /// <summary>
     ///     Converts a zero-based data column index into its spreadsheet-style column letter.
@@ -107,10 +79,12 @@ public partial class MainWindow : Window
 
         return letter;
     }
-
+    
     /// <summary>
     ///     Finds a data grid column by its display name or spreadsheet-style column letter.
     /// </summary>
+    /// <param name="searchValue">Value to search by</param>
+    /// <returns></returns>
     private DataGridColumn? FindColumnByNameOrLetter(string searchValue)
     {
         if (string.IsNullOrWhiteSpace(searchValue)) return null;
@@ -120,437 +94,349 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    ///     Finds the data grid column index for the specified column name or letter.
+    ///     Searches for a data grid column by its display name or spreadsheet-style column letter. <br/>
+    ///     Derives from FindColumnByNameOrLetter.
     /// </summary>
+    /// <param name="searchValue">Value to search by</param>
+    /// <returns></returns>
     private int FindColumnIndexByNameOrLetter(string searchValue)
     {
         var column = FindColumnByNameOrLetter(searchValue);
         return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
     }
-
+    
     /// <summary>
     ///     Converts a grid column index to the corresponding parser data column index.
     /// </summary>
+    /// <param name="gridColumnIndex">Value to convert</param>
+    /// <returns></returns>
     private int ToDataColumnIndex(int gridColumnIndex)
     {
         return gridColumnIndex - RowNumberColumnOffset;
     }
-    
+
     // Commands
 
     /// <summary>
     ///     Parses and executes a command entered by the user.
     /// </summary>
-    private async Task ExecuteCommandAsync(string commandText)
+    private void ExecuteCommand(string commandText)
     {
         // Interprets text command and executes the corresponding action
         if (string.IsNullOrWhiteSpace(commandText)) return;
         if (CsvDataGrid.Columns.Count == 0)
         {
-            StatusTextBlock.Text = "Open a CSV file before running any commands.";
+            StatusTextBlock.Text = "Open a CSV file before running any commands with the Open CSV button.";
             return;
         }
 
-        var parts = commandText.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        var parts = commandText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var command = parts[0];
-        var arguments = parts.Length > 1 ? parts[1] : string.Empty;
-        if (command.Equals("load", StringComparison.OrdinalIgnoreCase))
+        var arguments = parts[1..]; // Get the remaining parts as arguments
+        switch (command.ToLower())
         {
-            await Command_LoadAsync(arguments);
-            return;
+            // Check for command type and pass to intended recipient
+            case "load":
+                Command_Load(arguments);
+                return;
+            case "find":
+                Command_Find(arguments);
+                return;
+            case "goto": // COMBINE TO FIND
+                //await Command_GotoAsync(arguments);
+                return;
+            case "filter":
+                Command_Filter(arguments);
+                return;
+            case "hide":
+                Command_Hide(arguments);
+                return;
+            case "unhide":
+                Command_Unhide(arguments);
+                return;
+            default:
+                StatusTextBlock.Text = $"Unknown command: {command}";
+                return;
         }
-
-        if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
-        {
-            Command_Find(arguments);
-            return;
-        }
-
-        if (command.Equals("goto", StringComparison.OrdinalIgnoreCase))
-        {
-            await Command_GotoAsync(arguments);
-            return;
-        }
-
-        if (command.Equals("filter", StringComparison.OrdinalIgnoreCase))
-        {
-            Command_Filter(arguments);
-            return;
-        }
-
-        if (command.Equals("hide", StringComparison.OrdinalIgnoreCase))
-        {
-            Command_Hide(arguments);
-            return;
-        }
-
-        if (command.Equals("unhide", StringComparison.OrdinalIgnoreCase))
-        {
-            Command_Unhide(arguments);
-            return;
-        }
-
-        StatusTextBlock.Text = $"Unknown command: {command}";
     }
 
     /// <summary>
     ///     Handles the load command by parsing a row range and loading it into the view.
     /// </summary>
-    private async Task Command_LoadAsync(string arguments)
+    private void Command_Load(string[] arguments)
     {
-        // Loads a specified range of rows from the CSV file into the view
-        if (string.IsNullOrWhiteSpace(arguments))
+        const string errorMessage = "Usage: load (int) / load (int) (int)";
+        switch (arguments.Length)
         {
-            StatusTextBlock.Text = "Usage: load 1:10000";
-            return;
-        }
+            case 0:
+                StatusTextBlock.Text = errorMessage;
+                return;
+            case 1: // Load from argument [0] row
+                if (!int.TryParse(arguments[0], out var startRow) || startRow <= 0)
+                {
+                    StatusTextBlock.Text = errorMessage;
+                    break;
+                }
 
-        var rangeParts =
-            arguments.Split(':', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (rangeParts.Length != 2
-            || !int.TryParse(rangeParts[0], out var startRow)
-            || !int.TryParse(rangeParts[1], out var endRow)
-            || startRow <= 0
-            || endRow < startRow)
-        {
-            StatusTextBlock.Text = "Usage: load 1:10000";
-            return;
-        }
+                _ = LoadRangeIntoViewAsync(startRow, MaxVisibleRows);
+                break;
+            case 2: // Load between arguments [0] and [1]
+                if (!int.TryParse(arguments[0], out startRow) || !int.TryParse(arguments[1], out var endRow) ||
+                    startRow <= 0 || endRow <= startRow)
+                {
+                    StatusTextBlock.Text = errorMessage;
+                    break;
+                }
 
-        await LoadRangeIntoViewAsync(startRow, endRow);
+                _ = LoadRangeIntoViewAsync(startRow, endRow);
+                break;
+            default:
+                StatusTextBlock.Text = errorMessage;
+                break;
+        }
     }
 
     /// <summary>
-    ///     Handles the find command by locating the next matching visible cell and scrolling it into view.
+    ///     Handles the find command by locating all matching visible cells and showing them in a popup window.
     /// </summary>
-    private void Command_Find(string searchText)
+    private void Command_Find(string[] arguments)
     {
-        // Searches only the rows currently loaded into the grid, plus headers and row numbers.
-        if (CsvDataGrid.Columns.Count == 0)
-        {
-            StatusTextBlock.Text = "Open a CSV file before running find commands.";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(searchText))
-        {
-            StatusTextBlock.Text = "Usage: find word or find word columnName";
-            return;
-        }
-
-        var findParts = searchText.Trim()
-            .Split(' ', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        searchText = findParts[0];
-        var columnSearchValue = findParts.Length > 1 ? findParts[1] : string.Empty;
+        string searchText;
         string? searchHeader = null;
-        if (!string.IsNullOrWhiteSpace(columnSearchValue))
+
+        switch (arguments.Length)
         {
-            var columnIndex = FindColumnIndexByNameOrLetter(columnSearchValue);
-            if (columnIndex < 0)
-            {
-                StatusTextBlock.Text = $"Column not found: {columnSearchValue}";
+            case 0:
+                StatusTextBlock.Text = "Usage: find word or find word columnName";
                 return;
-            }
+            case 1:
+                searchText = arguments[0];
+                break;
+            case 2:
+                searchText = arguments[0];
+                var columnSearchValue = arguments[1];
+                var columnIndex = FindColumnIndexByNameOrLetter(columnSearchValue);
+                if (columnIndex < 0)
+                {
+                    StatusTextBlock.Text = $"Column not found: {columnSearchValue}";
+                    return;
+                }
 
-            searchHeader = columnIndex == 0
-                ? Parser.RowNumberKey
-                : Parser.Headers[ToDataColumnIndex(columnIndex)];
-        }
+                if (!CsvDataGrid.Columns[columnIndex].IsVisible)
+                {
+                    StatusTextBlock.Text = $"Column is hidden: {columnSearchValue}";
+                    return;
+                }
 
-        var isSameSearch = searchText.Equals(_lastFindSearchText, StringComparison.OrdinalIgnoreCase)
-                           && string.Equals(searchHeader, _lastFindSearchHeader, StringComparison.OrdinalIgnoreCase);
-
-        if (!isSameSearch)
-        {
-            _lastFindSearchText = searchText;
-            _lastFindSearchHeader = searchHeader;
-            _lastFindRowIndex = -1;
-            _lastFindHeaderIndex = -1;
+                searchHeader = columnIndex == 0
+                    ? Parser.RowNumberKey
+                    : Parser.Headers[ToDataColumnIndex(columnIndex)];
+                break;
+            default:
+                StatusTextBlock.Text = "Usage: find word or find word columnName";
+                return;
         }
 
         StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-            ? $"Searching visible rows for \"{searchText}\"..."
+            ? $"Searching visible cells for \"{searchText}\"..."
             : searchHeader == Parser.RowNumberKey
                 ? $"Searching visible row numbers for \"{searchText}\"..."
                 : $"Searching visible column {searchHeader} for \"{searchText}\"...";
 
-    var headersToSearch = string.IsNullOrWhiteSpace(searchHeader)
-        ? Parser.Headers.Prepend(Parser.RowNumberKey).ToArray()
-        : [searchHeader];
+        var visibleHeadersToSearch = new List<string>();
 
-    var rowsToSearch = new List<Dictionary<string, string>>();
-
-var headerRow = new Dictionary<string, string>
-{
-    [Parser.RowNumberKey] = "1"
-};
-
-foreach (var header in Parser.Headers) headerRow[header] = header;
-
-rowsToSearch.Add(headerRow);
-rowsToSearch.AddRange(_visibleRows);
-
-var totalCells = rowsToSearch.Count * headersToSearch.Length;
-var startCellIndex = isSameSearch && _lastFindRowIndex >= 0 && _lastFindHeaderIndex >= 0
-    ? (_lastFindRowIndex * headersToSearch.Length) + _lastFindHeaderIndex
-    : -1;
-
-for (var offset = 1; offset <= totalCells; offset++)
-{
-    var absoluteCellIndex = (startCellIndex + offset) % totalCells;
-    var rowIndex = absoluteCellIndex / headersToSearch.Length;
-    var headerIndex = absoluteCellIndex % headersToSearch.Length;
-    var row = rowsToSearch[rowIndex];
-    var header = headersToSearch[headerIndex];
-
-    if (!row.TryGetValue(header, out var value)) continue;
-
-    if (!value.Contains(searchText, StringComparison.OrdinalIgnoreCase)) continue;
-
-    _lastFindRowIndex = rowIndex;
-    _lastFindHeaderIndex = headerIndex;
-
-    ScrollToMatch(rowIndex == 0 ? null : row, header);
-
-    if (rowIndex == 0)
-    {
-        StatusTextBlock.Text = header == Parser.RowNumberKey
-            ? $"Found \"{searchText}\" in the header row, row numbers."
-            : $"Found \"{searchText}\" in the header row, column {header}.";
-        return;
-    }
-
-    var rowNumberText = row.TryGetValue(Parser.RowNumberKey, out var number)
-        ? number
-        : "?";
-    var foundColumnText = header == Parser.RowNumberKey
-        ? "row numbers"
-        : header;
-    StatusTextBlock.Text = $"Found \"{searchText}\" at visible row {rowNumberText}, column {foundColumnText}.";
-    return;
-}
-
-        StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-            ? $"No visible matches found for \"{searchText}\"."
-            : searchHeader == Parser.RowNumberKey
-                ? $"No visible matches found for \"{searchText}\" in row numbers."
-                : $"No visible matches found for \"{searchText}\" in column {searchHeader}.";
-    }
-
-    /// <summary>
-    ///     Handles the goto command by locating the next matching cell in the full file and loading nearby rows.
-    /// </summary>
-    private async Task Command_GotoAsync(string searchText)
-    {
-        // Searches the full CSV file, loads rows near the next match, and scrolls it into view.
-        if (CsvDataGrid.Columns.Count == 0 || _currentFilePath is null)
-        {
-            StatusTextBlock.Text = "Open a CSV file before running goto commands.";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(searchText))
-        {
-            StatusTextBlock.Text = "Usage: goto word or goto word columnName";
-            return;
-        }
-
-        var findParts = searchText.Trim()
-            .Split(' ', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        searchText = findParts[0];
-        var columnSearchValue = findParts.Length > 1 ? findParts[1] : string.Empty;
-        string? searchHeader = null;
-        if (!string.IsNullOrWhiteSpace(columnSearchValue))
-        {
-            var columnIndex = FindColumnIndexByNameOrLetter(columnSearchValue);
-            if (columnIndex < 0)
+        if (string.IsNullOrWhiteSpace(searchHeader))
+            foreach (var column in CsvDataGrid.Columns.Where(column => column.IsVisible))
             {
-                StatusTextBlock.Text = $"Column not found: {columnSearchValue}";
-                return;
+                var columnIndex = CsvDataGrid.Columns.IndexOf(column);
+                visibleHeadersToSearch.Add(columnIndex == 0
+                    ? Parser.RowNumberKey
+                    : Parser.Headers[ToDataColumnIndex(columnIndex)]);
             }
+        else
+            visibleHeadersToSearch.Add(searchHeader);
 
-            searchHeader = columnIndex == 0
-                ? Parser.RowNumberKey
-                : Parser.Headers[ToDataColumnIndex(columnIndex)];
-        }
+        var visibleRowsToSearch = _gridView
+            .Cast<Dictionary<string, string>>()
+            .ToList();
 
-        var isSameSearch = searchText.Equals(_lastGotoSearchText, StringComparison.OrdinalIgnoreCase)
-                       && string.Equals(searchHeader, _lastGotoSearchHeader, StringComparison.OrdinalIgnoreCase);
+        var foundInstances = new List<FindResult>();
 
-        if (!isSameSearch)
+        foreach (var row in visibleRowsToSearch)
+        foreach (var header in visibleHeadersToSearch)
         {
-            _lastGotoSearchText = searchText;
-            _lastGotoSearchHeader = searchHeader;
-            _lastGotoRowNumber = 0;
-            _lastGotoHeader = null;
+            if (!row.TryGetValue(header, out var value)) continue;
+            if (!value.Contains(searchText, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var rowNumberText = row.GetValueOrDefault(Parser.RowNumberKey, "?");
+
+            foundInstances.Add(new FindResult
+            {
+                Row = row,
+                Header = header,
+                Value = value,
+                RowNumber = rowNumberText
+            });
         }
 
-        StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-            ? $"Searching file for \"{searchText}\"..."
-            : searchHeader == Parser.RowNumberKey
-                ? $"Searching file row numbers for \"{searchText}\"..."
-                : $"Searching file column {searchHeader} for \"{searchText}\"...";
-
-        var match = await Parser.FindNextAsync(
-            _currentFilePath,
-            searchText,
-            searchHeader,
-            _lastGotoRowNumber,
-            _lastGotoHeader);
-
-        if (match is null && isSameSearch)
-        {
-            match = await Parser.FindNextAsync(_currentFilePath, searchText, searchHeader);
-        }
-
-        if (match is null)
+        if (foundInstances.Count == 0)
         {
             StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-            ? $"No matches found for \"{searchText}\"."
-            : searchHeader == Parser.RowNumberKey
-                ? $"No matches found for \"{searchText}\" in row numbers."
-                : $"No matches found for \"{searchText}\" in column {searchHeader}.";
+                ? $"No visible matches found for \"{searchText}\"."
+                : searchHeader == Parser.RowNumberKey
+                    ? $"No visible matches found for \"{searchText}\" in visible row numbers."
+                    : $"No visible matches found for \"{searchText}\" in visible column {searchHeader}.";
             return;
         }
 
-        _lastGotoRowNumber = match.Value.RowNumber;
-        _lastGotoHeader = match.Value.Header;
+        ShowFindResultsWindow(searchText, foundInstances);
 
-        var foundRowNumber = match.Value.RowNumber;
-        var windowStart = Math.Max(1, foundRowNumber - 20);
-        var windowEnd = windowStart + MaxVisibleRows - 1;
-        var rows = await Parser.ReadRangeAsync(_currentFilePath, windowStart, windowEnd, MaxVisibleRows);
-        ReplaceVisibleRows(rows);
+        var firstMatch = foundInstances[0];
+        ScrollToMatch(firstMatch.Row, firstMatch.Header);
 
-        var visibleMatch = _visibleRows.FirstOrDefault(row =>
-            row.TryGetValue(Parser.RowNumberKey, out var rowNumberText)
-            && int.TryParse(rowNumberText, out var rowNumber)
-            && rowNumber == foundRowNumber);
-
-        ScrollToMatch(visibleMatch, match.Value.Header);
-
-        var foundColumnText = match.Value.Header == Parser.RowNumberKey
+        var foundColumnText = firstMatch.Header == Parser.RowNumberKey
             ? "row numbers"
-            : match.Value.Header;
-        StatusTextBlock.Text = foundRowNumber == 1
-            ? $"Found \"{searchText}\" in the header row, column {foundColumnText}."
-            : $"Found \"{searchText}\" at row {foundRowNumber:N0}, column {foundColumnText}.";
-}
+            : firstMatch.Header;
+
+        StatusTextBlock.Text =
+            $"Found {foundInstances.Count:N0} visible instance(s) of \"{searchText}\". First match at visible row {firstMatch.RowNumber}, column {foundColumnText}.";
+    }
 
     /// <summary>
     ///     Handles the filter command by applying or clearing the current grid filter.
     /// </summary>
-    private void Command_Filter(string arguments)
+    private void Command_Filter(string[] arguments)
     {
-        // Applies a filter to the CSV data based on user input
-        if (string.IsNullOrWhiteSpace(arguments))
+        switch (arguments.Length)
         {
-            StatusTextBlock.Text = "Usage: filter word, filter columnName, or filter clear";
-            return;
+            case 0:
+                StatusTextBlock.Text = "Usage: filter word, filter columnName, or filter clear";
+                break;
+            case 1:
+                // Remove the filter
+                if (arguments[0].Equals("clear", StringComparison.OrdinalIgnoreCase))
+                {
+                    _gridView.Filter = null!;
+                    _gridView.Refresh();
+                    StatusTextBlock.Text = "Filter cleared.";
+                    break;
+                }
+
+                // Applies a filter to clean a column of non-important data
+                var matchingColumnIndex = FindColumnIndexByNameOrLetter(arguments[0]);
+                if (matchingColumnIndex > 0)
+                {
+                    var matchingHeader = Parser.Headers[ToDataColumnIndex(matchingColumnIndex)];
+                    _gridView.Filter = item =>
+                    {
+                        if (item is not Dictionary<string, string> row) return false;
+                        if (!row.TryGetValue(matchingHeader, out var value)) return false;
+                        return !string.IsNullOrWhiteSpace(value)
+                               && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase);
+                    };
+                    _gridView.Refresh();
+                    StatusTextBlock.Text = $"Filtered rows where column \"{matchingHeader}\" is not empty and not \\N.";
+                    break;
+                }
+
+                // Applies a filter to only show matching words
+                _gridView.Filter = item =>
+                {
+                    if (item is not Dictionary<string, string> row) return false;
+                    foreach (var header in Parser.Headers)
+                    {
+                        if (!row.TryGetValue(header, out var value)) continue;
+
+                        if (value.Contains(arguments[0], StringComparison.OrdinalIgnoreCase)) return true;
+                    }
+
+                    return false;
+                };
+                _gridView.Refresh();
+                StatusTextBlock.Text = $"Filtered rows containing \"{arguments[0]}\".";
+                break;
+            case 2:
+                // Much like the find command, the user can specify both a column name and a value to filter by.
+                Console.WriteLine("NOT IMPLEMENTED");
+                break;
+            default:
+                StatusTextBlock.Text = "Usage: filter columnName value";
+                break;
         }
-
-        var filterText = arguments.Trim();
-        if (filterText.Equals("clear", StringComparison.OrdinalIgnoreCase))
-        {
-            _gridView.Filter = null;
-            _gridView.Refresh();
-            StatusTextBlock.Text = "Filter cleared.";
-            return;
-        }
-
-        var matchingColumnIndex = FindColumnIndexByNameOrLetter(filterText);
-        if (matchingColumnIndex > 0)
-        {
-            var matchingHeader = Parser.Headers[ToDataColumnIndex(matchingColumnIndex)];
-            _gridView.Filter = item =>
-            {
-                if (item is not Dictionary<string, string> row) return false;
-                if (!row.TryGetValue(matchingHeader, out var value)) return false;
-                return !string.IsNullOrWhiteSpace(value)
-                       && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase);
-            };
-            _gridView.Refresh();
-            StatusTextBlock.Text = $"Filtered rows where column \"{matchingHeader}\" is not empty and not \\N.";
-            return;
-        }
-
-        _gridView.Filter = item =>
-        {
-            if (item is not Dictionary<string, string> row) return false;
-
-            foreach (var header in Parser.Headers)
-            {
-                if (!row.TryGetValue(header, out var value)) continue;
-
-                if (value.Contains(filterText, StringComparison.OrdinalIgnoreCase)) return true;
-            }
-            return false;
-        };
-
-        _gridView.Refresh();
-        StatusTextBlock.Text = $"Filtered rows containing \"{filterText}\".";
     }
 
     /// <summary>
     ///     Handles the hide command by hiding a single column or a range of columns.
     /// </summary>
-    private void Command_Hide(string arguments)
+    private void Command_Hide(string[] arguments)
     {
-        if (string.IsNullOrWhiteSpace(arguments))
+        switch (arguments.Length)
         {
-            StatusTextBlock.Text = "Usage: hide a:x or hide columnName1:columnName2";
-            return;
+            case 0: // No arguments provided
+                StatusTextBlock.Text = "Usage: hide a:x or hide columnName1:columnName2";
+                break;
+            case 1: // Hide single column
+                var column = FindColumnByNameOrLetter(arguments[0]);
+                if (column is null)
+                {
+                    StatusTextBlock.Text = $"Column not found: {arguments[0]}";
+                    break;
+                }
+
+                column.IsVisible = false;
+                StatusTextBlock.Text = $"Hidden column {column.Header}.";
+                break;
+            case 2: // Hide range of columns
+                var startIndex = FindColumnIndexByNameOrLetter(arguments[0]);
+                var endIndex = FindColumnIndexByNameOrLetter(arguments[1]);
+                if (startIndex < 0)
+                {
+                    StatusTextBlock.Text = $"Column not found: {arguments[0]}";
+                    break;
+                }
+
+                if (endIndex < 0)
+                {
+                    StatusTextBlock.Text = $"Column not found: {arguments[1]}";
+                    break;
+                }
+
+                if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
+                for (var i = startIndex; i <= endIndex; i++) CsvDataGrid.Columns[i].IsVisible = false;
+                StatusTextBlock.Text =
+                    $"Hidden columns {GetColumnLetter(ToDataColumnIndex(startIndex))}:{GetColumnLetter(ToDataColumnIndex(endIndex))}.";
+                break;
+            default:
+                StatusTextBlock.Text = "Usage: hide a b / hide columnName1 columnName2";
+                break;
         }
-
-        var rangeParts =
-            arguments.Split(':', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (rangeParts.Length == 1)
-        {
-            var column = FindColumnByNameOrLetter(rangeParts[0]);
-            if (column is null)
-            {
-                StatusTextBlock.Text = $"Column not found: {rangeParts[0]}";
-                return;
-            }
-
-            column.IsVisible = false;
-            StatusTextBlock.Text = $"Hidden column {column.Header}.";
-            return;
-        }
-
-        var startIndex = FindColumnIndexByNameOrLetter(rangeParts[0]);
-        var endIndex = FindColumnIndexByNameOrLetter(rangeParts[1]);
-        if (startIndex < 0)
-        {
-            StatusTextBlock.Text = $"Column not found: {rangeParts[0]}";
-            return;
-        }
-
-        if (endIndex < 0)
-        {
-            StatusTextBlock.Text = $"Column not found: {rangeParts[1]}";
-            return;
-        }
-
-        if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
-        for (var i = startIndex; i <= endIndex; i++) CsvDataGrid.Columns[i].IsVisible = false;
-        StatusTextBlock.Text =
-            $"Hidden columns {GetColumnLetter(ToDataColumnIndex(startIndex))}:{GetColumnLetter(ToDataColumnIndex(endIndex))}.";
     }
 
     /// <summary>
     ///     Handles the unhide command and restores hidden columns when requested.
     /// </summary>
-    private void Command_Unhide(string arguments)
+    private void Command_Unhide(string[] arguments)
     {
-        if (arguments.Equals("all", StringComparison.OrdinalIgnoreCase))
+        switch (arguments.Length)
         {
-            ShowAllColumns();
-            StatusTextBlock.Text = "All columns are visible.";
-            return;
-        }
+            case 0:
+                StatusTextBlock.Text = "Usage: unhide all / unhide a:b / unhide columnName1:columnName2";
+                break;
+            case 1:
+                if (arguments[0].Equals("all", StringComparison.OrdinalIgnoreCase))
+                {
+                    ShowAllColumns();
+                    StatusTextBlock.Text = "All columns are visible.";
+                    break;
+                }
 
-        StatusTextBlock.Text = "Usage: unhide all / unhide a:b / unhide columnName1:columnName2";
+                Console.WriteLine("NOT IMPLEMENTED"); // The user should be capable of selectively unhiding columns
+                StatusTextBlock.Text = "Usage: unhide all / unhide a:b / unhide columnName1:columnName2";
+                break;
+            default:
+                StatusTextBlock.Text = "Usage: unhide all / unhide a:b / unhide columnName1:columnName2";
+                break;
+        }
     }
 
     // UI interaction
@@ -558,18 +444,18 @@ for (var offset = 1; offset <= totalCells; offset++)
     /// <summary>
     ///     Runs the command currently entered in the command text box.
     /// </summary>
-    private async void RunCommandButton_Click(object? sender, RoutedEventArgs e)
+    private void RunCommandButton_Click(object? sender, RoutedEventArgs e)
     {
-        await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
+        ExecuteCommand(CommandTextBox.Text ?? string.Empty);
     }
 
     /// <summary>
     ///     Runs the entered command when the user presses Enter in the command text box.
     /// </summary>
-    private async void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
+    private void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
-        await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
+        ExecuteCommand(CommandTextBox.Text ?? string.Empty);
         e.Handled = true;
     }
 
@@ -614,27 +500,24 @@ for (var offset = 1; offset <= totalCells; offset++)
             ]
         });
         if (files.Count == 0) return;
+        CsvDataGrid.FrozenColumnCount = 0;
         _currentFilePath = files[0].Path.LocalPath;
         _currentFileName = files[0].Name;
-        ResetSearchState();
         _gridView.Filter = null;
         _visibleRows.Clear();
-        CsvDataGrid.Columns.Clear();
         _columnsByName.Clear();
         _columnsByLetter.Clear();
+        CsvDataGrid.Columns.Clear();
         StatusTextBlock.Text = $"Loading {_currentFileName}...";
-
-    await Parser.ReadHeadersAsync(_currentFilePath);
-    CsvDataGrid.Columns.Clear();
-    _columnsByName.Clear();
-    _columnsByLetter.Clear();
-    var rowNumberColumn = new DataGridTextColumn
-    {
-        Header = "1",
+        
+        await Parser.ReadHeadersAsync(_currentFilePath);
+        var rowNumberColumn = new DataGridTextColumn
+        {
+            Header = "1",
             Binding = new Binding($"[{Parser.RowNumberKey}]"),
             SortMemberPath = $"[{Parser.RowNumberKey}]",
             IsReadOnly = true,
-            CanUserSort = false,
+            CanUserSort = false
         };
         CsvDataGrid.Columns.Add(rowNumberColumn);
         _columnsByName[Parser.RowNumberKey] = rowNumberColumn;
@@ -654,12 +537,46 @@ for (var offset = 1; offset <= totalCells; offset++)
             _columnsByLetter[columnLetter] = column;
         }
 
-        FreezeRowNumberColumn();
-
-        await LoadRangeIntoViewAsync(1, MaxVisibleRows);
+        _ = LoadRangeIntoViewAsync(1, MaxVisibleRows);
     }
 
     // UI actions
+
+    /// <summary>
+    ///     Shows all visible find results in a popup window. Selecting a result scrolls the main grid to that cell.
+    /// </summary>
+    private void ShowFindResultsWindow(string searchText, IReadOnlyList<FindResult> foundInstances)
+    {
+        var resultsListBox = new ListBox
+        {
+            ItemsSource = foundInstances,
+            Margin = new Thickness(8)
+        };
+
+        resultsListBox.SelectionChanged += (_, _) =>
+        {
+            if (resultsListBox.SelectedItem is not FindResult selectedResult) return;
+
+            ScrollToMatch(selectedResult.Row, selectedResult.Header);
+
+            var foundColumnText = selectedResult.Header == Parser.RowNumberKey
+                ? "row numbers"
+                : selectedResult.Header;
+
+            StatusTextBlock.Text =
+                $"Selected \"{searchText}\" at visible row {selectedResult.RowNumber}, column {foundColumnText}.";
+        };
+
+        var resultsWindow = new Window
+        {
+            Title = $"Find results for \"{searchText}\"",
+            Width = 700,
+            Height = 500,
+            Content = resultsListBox
+        };
+
+        resultsWindow.Show(this);
+    }
 
     /// <summary>
     ///     Makes all data grid columns visible.
@@ -667,14 +584,6 @@ for (var offset = 1; offset <= totalCells; offset++)
     private void ShowAllColumns()
     {
         foreach (var column in CsvDataGrid.Columns) column.IsVisible = true;
-    }
-
-    /// <summary>
-    ///     Keeps the row-number column visible while horizontally scrolling data columns.
-    /// </summary>
-    private void FreezeRowNumberColumn()
-    {
-        CsvDataGrid.FrozenColumnCount = CsvDataGrid.Columns.Count > 0 ? 1 : 0;
     }
 
     /// <summary>
@@ -688,7 +597,7 @@ for (var offset = 1; offset <= totalCells; offset++)
 
         if (column is null) return;
 
-        column.IsVisible = true;
+        if (!column.IsVisible) return;
 
         if (row is not null && _visibleRows.Contains(row))
         {
@@ -708,46 +617,57 @@ for (var offset = 1; offset <= totalCells; offset++)
     /// </summary>
     private async Task LoadRangeIntoViewAsync(int startRow, int endRow)
     {
-        if (_currentFilePath is null || _isLoading) return;
+        if (_currentFilePath is null || _isBusy) return;
         if (startRow <= 0 || endRow < startRow)
         {
             StatusTextBlock.Text = "Invalid row range.";
             return;
         }
-        
+
         if (endRow - startRow > MaxVisibleRows) endRow = startRow + MaxVisibleRows;
-        _isLoading = true;
+        _isBusy = true;
         try
         {
             StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
-            var rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow, MaxVisibleRows);
-            ReplaceVisibleRows(rows);
-            _lastFindSearchText = null;
-            _lastFindSearchHeader = null;
-            _lastFindRowIndex = -1;
-            _lastFindHeaderIndex = -1;
+            IEnumerable<Dictionary<string, string>> rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow, MaxVisibleRows);
+            _ = ReplaceVisibleRows(rows);
 
-            if (rows.Count == 0)
+            if (!rows.Any())
             {
                 StatusTextBlock.Text = $"No rows found in range {startRow:N0}:{endRow:N0}.";
                 return;
             }
 
-            StatusTextBlock.Text = $"Showing {rows.Count:N0} rows from range {startRow:N0}:{endRow:N0}.";
+            StatusTextBlock.Text = $"Showing {rows.Count():N0} rows from range {startRow:N0}:{endRow:N0}.";
         }
         finally
         {
-            _isLoading = false;
+            CsvDataGrid.FrozenColumnCount = CsvDataGrid.Columns.Count > 0 ? 1 : 0;
+            _isBusy = false;
         }
     }
 
     /// <summary>
     ///     Replaces the currently visible rows and refreshes the grid view.
     /// </summary>
-    private void ReplaceVisibleRows(IEnumerable<Dictionary<string, string>> rows)
+    private async Task ReplaceVisibleRows(IEnumerable<Dictionary<string, string>> rows)
     {
         _visibleRows.Clear();
         foreach (var row in rows) _visibleRows.Add(row);
         _gridView.Refresh();
+    }
+
+    private sealed class FindResult
+    {
+        public required Dictionary<string, string> Row { get; init; }
+        public required string Header { get; init; }
+        public required string Value { get; init; }
+        public required string RowNumber { get; init; }
+
+        public override string ToString()
+        {
+            var columnText = Header == Parser.RowNumberKey ? "row numbers" : Header;
+            return $"Row {RowNumber}, Column {columnText}: {Value}";
+        }
     }
 }
