@@ -16,7 +16,7 @@ namespace CSVoom;
 
 public partial class MainWindow : Window
 {
-    private const int MaxVisibleRows = 10000;
+    private const int AutoVisibleRows = 10000;
     private const int RowNumberColumnOffset = 1;
 
     private static readonly IReadOnlyList<string> CommandSuggestions =
@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     private string? _currentFileName;
     private string? _currentFilePath;
     private bool _isBusy;
+    private Window? _findResultsWindow;
     
     /// <summary>
     ///     Initializes the main window and connects the visible row collection to the data grid.
@@ -59,118 +60,66 @@ public partial class MainWindow : Window
         CommandTextBox.ItemsSource = CommandSuggestions;
         _gridView = new DataGridCollectionView(_visibleRows);
         CsvDataGrid.ItemsSource = _gridView;
-    }
-
-    // Utility
-
-    /// <summary>
-    ///     Converts a zero-based data column index into its spreadsheet-style column letter.
-    /// </summary>
-    private static string GetColumnLetter(int columnIndex)
-    {
-        var letter = string.Empty;
-        columnIndex++;
-        while (columnIndex > 0)
-        {
-            columnIndex--;
-            letter = (char)('A' + columnIndex % 26) + letter;
-            columnIndex /= 26;
-        }
-
-        return letter;
+        Closed += (_, _) => CloseFindResultsWindow();
     }
     
-    /// <summary>
-    ///     Finds a data grid column by its display name or spreadsheet-style column letter.
-    /// </summary>
-    /// <param name="searchValue">Value to search by</param>
-    /// <returns></returns>
-    private DataGridColumn? FindColumnByNameOrLetter(string searchValue)
-    {
-        if (string.IsNullOrWhiteSpace(searchValue)) return null;
-        var normalizedSearchValue = searchValue.Trim();
-        if (_columnsByName.TryGetValue(normalizedSearchValue, out var columnByName)) return columnByName;
-        return _columnsByLetter.GetValueOrDefault(normalizedSearchValue);
-    }
-
-    /// <summary>
-    ///     Searches for a data grid column by its display name or spreadsheet-style column letter. <br/>
-    ///     Derives from FindColumnByNameOrLetter.
-    /// </summary>
-    /// <param name="searchValue">Value to search by</param>
-    /// <returns></returns>
-    private int FindColumnIndexByNameOrLetter(string searchValue)
-    {
-        var column = FindColumnByNameOrLetter(searchValue);
-        return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
-    }
-    
-    /// <summary>
-    ///     Converts a grid column index to the corresponding parser data column index.
-    /// </summary>
-    /// <param name="gridColumnIndex">Value to convert</param>
-    /// <returns></returns>
-    private int ToDataColumnIndex(int gridColumnIndex)
-    {
-        return gridColumnIndex - RowNumberColumnOffset;
-    }
-
     // Commands
 
     /// <summary>
     ///     Parses and executes a command entered by the user.
     /// </summary>
-    private void ExecuteCommand(string commandText)
+    private async Task ExecuteCommandAsync(string commandText)
     {
-        // Interprets text command and executes the corresponding action
-        if (string.IsNullOrWhiteSpace(commandText)) return;
-        if (CsvDataGrid.Columns.Count == 0)
-        {
-            StatusTextBlock.Text = "Open a CSV file before running any commands with the Open CSV button.";
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(commandText) || CsvDataGrid.Columns.Count == 0 || _isBusy) return;
 
-        var parts = commandText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var command = parts[0];
-        var arguments = parts[1..]; // Get the remaining parts as arguments
-        switch (command.ToLower())
+        CloseFindResultsWindow();
+        SetIsBusy(true);
+
+        try
         {
-            // Check for command type and pass to intended recipient
-            case "load":
-                Command_Load(arguments);
-                return;
-            case "find":
-                Command_Find(arguments);
-                return;
-            case "goto": // COMBINE TO FIND
-                //await Command_GotoAsync(arguments);
-                return;
-            case "filter":
-                Command_Filter(arguments);
-                return;
-            case "hide":
-                Command_Hide(arguments);
-                return;
-            case "unhide":
-                Command_Unhide(arguments);
-                return;
-            default:
-                StatusTextBlock.Text = $"Unknown command: {command}";
-                return;
+            var parts = commandText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var command = parts[0];
+            var arguments = parts[1..]; // Get the remaining parts as arguments
+            switch (command.ToLower())
+            {
+                // Check for command type and pass to intended recipient
+                case "load":
+                    await Command_LoadAsync(arguments);
+                    return;
+                case "find":
+                    Command_Find(arguments);
+                    return;
+                case "filter":
+                    Command_Filter(arguments);
+                    return;
+                case "hide":
+                    Command_Hide(arguments);
+                    return;
+                case "unhide":
+                    Command_Unhide(arguments);
+                    return;
+                default:
+                    StatusTextBlock.Text = $"Unknown command: {command}";
+                    return;
+            }
+        }
+        finally
+        {
+            SetIsBusy(false);
         }
     }
 
     /// <summary>
     ///     Handles the load command by parsing a row range and loading it into the view.
     /// </summary>
-    private void Command_Load(string[] arguments)
+    private async Task Command_LoadAsync(string[] arguments)
     {
         const string errorMessage = "Usage: load (int) / load (int) (int)";
         switch (arguments.Length)
         {
             case 0:
                 StatusTextBlock.Text = errorMessage;
-                return;
+                break;
             case 1: // Load from argument [0] row
                 if (!int.TryParse(arguments[0], out var startRow) || startRow <= 0)
                 {
@@ -178,7 +127,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                _ = LoadRangeIntoViewAsync(startRow, MaxVisibleRows);
+                await LoadRangeIntoViewAsync(startRow, startRow + AutoVisibleRows);
                 break;
             case 2: // Load between arguments [0] and [1]
                 if (!int.TryParse(arguments[0], out startRow) || !int.TryParse(arguments[1], out var endRow) ||
@@ -188,7 +137,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                _ = LoadRangeIntoViewAsync(startRow, endRow);
+                await LoadRangeIntoViewAsync(startRow, endRow);
                 break;
             default:
                 StatusTextBlock.Text = errorMessage;
@@ -392,13 +341,13 @@ public partial class MainWindow : Window
                 if (startIndex < 0)
                 {
                     StatusTextBlock.Text = $"Column not found: {arguments[0]}";
-                    break;
+                    return;
                 }
 
                 if (endIndex < 0)
                 {
                     StatusTextBlock.Text = $"Column not found: {arguments[1]}";
-                    break;
+                    return;
                 }
 
                 if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
@@ -444,18 +393,18 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Runs the command currently entered in the command text box.
     /// </summary>
-    private void RunCommandButton_Click(object? sender, RoutedEventArgs e)
+    private async void RunCommandButton_Click(object? sender, RoutedEventArgs e)
     {
-        ExecuteCommand(CommandTextBox.Text ?? string.Empty);
+        await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
     }
 
     /// <summary>
     ///     Runs the entered command when the user presses Enter in the command text box.
     /// </summary>
-    private void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
+    private async void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
-        ExecuteCommand(CommandTextBox.Text ?? string.Empty);
+        await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
         e.Handled = true;
     }
 
@@ -481,11 +430,13 @@ public partial class MainWindow : Window
     private async void OpenCsvButton_Click(object? sender, RoutedEventArgs e)
     {
         var topLevel = GetTopLevel(this);
-        if (topLevel is null)
+        if (topLevel is null || _isBusy)
         {
             StatusTextBlock.Text = "Unable to open the file picker.";
             return;
         }
+        
+        SetIsBusy(true);
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
@@ -537,16 +488,19 @@ public partial class MainWindow : Window
             _columnsByLetter[columnLetter] = column;
         }
 
-        _ = LoadRangeIntoViewAsync(1, MaxVisibleRows);
+        _ = LoadRangeIntoViewAsync(1, AutoVisibleRows);
+        
+        SetIsBusy(false);
     }
 
-    // UI actions
+    // Utility
 
-    /// <summary>
     ///     Shows all visible find results in a popup window. Selecting a result scrolls the main grid to that cell.
     /// </summary>
     private void ShowFindResultsWindow(string searchText, IReadOnlyList<FindResult> foundInstances)
     {
+        CloseFindResultsWindow();
+
         var resultsListBox = new ListBox
         {
             ItemsSource = foundInstances,
@@ -567,7 +521,7 @@ public partial class MainWindow : Window
                 $"Selected \"{searchText}\" at visible row {selectedResult.RowNumber}, column {foundColumnText}.";
         };
 
-        var resultsWindow = new Window
+        _findResultsWindow = new Window
         {
             Title = $"Find results for \"{searchText}\"",
             Width = 700,
@@ -575,7 +529,20 @@ public partial class MainWindow : Window
             Content = resultsListBox
         };
 
-        resultsWindow.Show(this);
+        _findResultsWindow.Closed += (_, _) => _findResultsWindow = null;
+        _findResultsWindow.Show(this);
+    }
+
+    /// <summary>
+    ///     Closes the find results popup if it is currently open.
+    /// </summary>
+    private void CloseFindResultsWindow()
+    {
+        if (_findResultsWindow is null) return;
+
+        var window = _findResultsWindow;
+        _findResultsWindow = null;
+        window.Close();
     }
 
     /// <summary>
@@ -595,9 +562,7 @@ public partial class MainWindow : Window
             ? CsvDataGrid.Columns[0]
             : FindColumnByNameOrLetter(header);
 
-        if (column is null) return;
-
-        if (!column.IsVisible) return;
+        if (column is null || !column.IsVisible) return;
 
         if (row is not null && _visibleRows.Contains(row))
         {
@@ -617,20 +582,19 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task LoadRangeIntoViewAsync(int startRow, int endRow)
     {
-        if (_currentFilePath is null || _isBusy) return;
+        if (_currentFilePath is null) return;
+
         if (startRow <= 0 || endRow < startRow)
         {
             StatusTextBlock.Text = "Invalid row range.";
             return;
         }
 
-        if (endRow - startRow > MaxVisibleRows) endRow = startRow + MaxVisibleRows;
-        _isBusy = true;
         try
         {
             StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
-            IEnumerable<Dictionary<string, string>> rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow, MaxVisibleRows);
-            _ = ReplaceVisibleRows(rows);
+            var rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow);
+            ReplaceVisibleRows(rows);
 
             if (!rows.Any())
             {
@@ -638,23 +602,88 @@ public partial class MainWindow : Window
                 return;
             }
 
-            StatusTextBlock.Text = $"Showing {rows.Count():N0} rows from range {startRow:N0}:{endRow:N0}.";
+            StatusTextBlock.Text = $"Showing {rows.Count:N0} rows from range {startRow:N0}:{endRow:N0}.";
         }
         finally
         {
             CsvDataGrid.FrozenColumnCount = CsvDataGrid.Columns.Count > 0 ? 1 : 0;
-            _isBusy = false;
         }
+    }
+
+    /// <summary>
+    ///     Convenience method to set the status of the UI
+    /// </summary>
+    /// <param name="toStatus">Sets the UI to busy state if true, sets to available state if false</param>
+    private void SetIsBusy(bool toStatus)
+    {
+        RunButton.IsEnabled = !toStatus;
+        OpenCsvButton.IsEnabled = !toStatus;
+        _isBusy = toStatus;
+        Console.WriteLine($": {toStatus}");
     }
 
     /// <summary>
     ///     Replaces the currently visible rows and refreshes the grid view.
     /// </summary>
-    private async Task ReplaceVisibleRows(IEnumerable<Dictionary<string, string>> rows)
+    private void ReplaceVisibleRows(IEnumerable<Dictionary<string, string>> rows)
     {
         _visibleRows.Clear();
         foreach (var row in rows) _visibleRows.Add(row);
         _gridView.Refresh();
+    }
+
+    /// <summary>
+    ///     Converts a zero-based data column index into its spreadsheet-style column letter.
+    /// </summary>
+    private static string GetColumnLetter(int columnIndex)
+    {
+        var letter = string.Empty;
+        columnIndex++;
+        while (columnIndex > 0)
+        {
+            columnIndex--;
+            letter = (char)('A' + columnIndex % 26) + letter;
+            columnIndex /= 26;
+        }
+
+        return letter;
+    }
+    
+    /// <summary>
+    ///     Finds a data grid column by its display name or spreadsheet-style column letter.
+    /// </summary>
+    /// <param name="searchValue">Value to search by</param>
+    /// <returns></returns>
+    private DataGridColumn? FindColumnByNameOrLetter(string searchValue)
+    {
+        if (string.IsNullOrWhiteSpace(searchValue)) return null;
+
+        var normalizedSearchValue = searchValue.Trim();
+        if (_columnsByName.TryGetValue(normalizedSearchValue, out var columnByName)) return columnByName;
+
+        return _columnsByLetter.GetValueOrDefault(normalizedSearchValue);
+    }
+
+    /// <summary>
+    ///     Searches for a data grid column by its display name or spreadsheet-style column letter. <br/>
+    ///     Derives from FindColumnByNameOrLetter.
+    /// </summary>
+    /// <param name="searchValue">Value to search by</param>
+    /// <returns></returns>
+    private int FindColumnIndexByNameOrLetter(string searchValue)
+    {
+        var column = FindColumnByNameOrLetter(searchValue);
+        return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
+    }
+    
+    /// <summary>
+    ///     Converts a grid column index to the corresponding parser data column index.
+    /// </summary>
+    /// <param name="gridColumnIndex">Value to convert</param>
+    /// <returns></returns>
+    private int ToDataColumnIndex(int gridColumnIndex)
+    {
+        return gridColumnIndex - RowNumberColumnOffset;
     }
 
     private sealed class FindResult

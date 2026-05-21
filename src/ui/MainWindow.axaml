@@ -27,8 +27,8 @@
                 HorizontalAlignment="Stretch"
                 MinWidth="320"
                 MinimumPrefixLength="0" />
-            <Button Content="Run" Click="RunCommandButton_Click" />
-            <Button Content="Open CSV" Click="OpenCsvButton_Click" />
+            <Button Content="Run" Click="RunCommandButton_Click" Name="RunButton"/>
+            <Button Content="Open CSV" Click="OpenCsvButton_Click" Name="OpenCsvButton" />
         </StackPanel>
         <DataGrid
             Grid.Row="2"

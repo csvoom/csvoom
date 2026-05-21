@@ -58,7 +58,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 "5"
             ]);
 
-            var rows = await _parser.ReadRangeAsync(filePath, 2, 4, 1000);
+            var rows = await _parser.ReadRangeAsync(filePath, 2, 4);
 
             Assert.Equal(3, rows.Count);
             Assert.Equal("1", rows[0]["value"]);
@@ -66,37 +66,6 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             Assert.Equal("3", rows[2]["value"]);
             Assert.Equal("2", rows[0][Parser.RowNumberKey]);
             Assert.Equal("4", rows[2][Parser.RowNumberKey]);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
-    }
-
-    [Fact]
-    public async Task TestReadRangeCapsAtMaxRows()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllLinesAsync(filePath,
-            [
-                "value",
-                "1",
-                "2",
-                "3",
-                "4",
-                "5"
-            ]);
-
-            var rows = await _parser.ReadRangeAsync(filePath, 1, 5, 2);
-
-            Assert.Equal(2, rows.Count);
-            Assert.Equal("1", rows[0]["value"]);
-            Assert.Equal("2", rows[1]["value"]);
         }
         finally
         {
@@ -116,7 +85,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             await File.WriteAllTextAsync(filePath, string.Empty);
 
             var headers = await _parser.ReadHeadersAsync(filePath);
-            var rows = await _parser.ReadRangeAsync(filePath, 1, 10, 1000);
+            var rows = await _parser.ReadRangeAsync(filePath, 1, 10);
 
             Assert.Empty(headers);
             Assert.Empty(rows);
@@ -147,8 +116,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var rows = await _parser.ReadMatchingRowsAsync(
                 filePath,
                 row => row.TryGetValue("city", out var city)
-                       && city.Equals("London", StringComparison.OrdinalIgnoreCase),
-                1000);
+                       && city.Equals("London", StringComparison.OrdinalIgnoreCase));
 
             Assert.Equal(2, rows.Count);
             Assert.Equal("Alice", rows[0]["name"]);
@@ -289,7 +257,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 await writer.WriteLineAsync("2");
             }
 
-            var rows = await _parser.ReadRangeAsync(filePath, 2, 3, 1000);
+            var rows = await _parser.ReadRangeAsync(filePath, 2, 3);
 
             Assert.Equal(2, rows.Count);
             Assert.Equal("1", rows[0]["value"]);
@@ -316,7 +284,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
 
             await File.WriteAllLinesAsync(filePath, lines);
 
-            var rows = await _parser.ReadRangeAsync(filePath, 100, 102, 1000);
+            var rows = await _parser.ReadRangeAsync(filePath, 100, 102);
 
             Assert.Equal(3, rows.Count);
             Assert.Equal("row-100", rows[0]["value"]);

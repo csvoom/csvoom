@@ -84,12 +84,11 @@ public class Parser
     public async Task<ObservableCollection<Dictionary<string, string>>> ReadRangeAsync(
         string filePath,
         int startRow,
-        int endRow,
-        int maxRows)
+        int endRow)
     {
         var rows = new ObservableCollection<Dictionary<string, string>>();
 
-        if (startRow <= 0 || endRow < startRow || maxRows <= 0) return rows;
+        if (startRow <= 0 || endRow < startRow) return rows;
 
         await EnsureHeadersLoadedAsync(filePath);
 
@@ -105,7 +104,7 @@ public class Parser
 
             if (currentRowNumber < startRow) continue;
 
-            if (currentRowNumber > endRow || rows.Count >= maxRows) break;
+            if (currentRowNumber > endRow) break;
 
             rows.Add(BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber));
         }
@@ -121,12 +120,9 @@ public class Parser
     /// </summary>
     public async Task<ObservableCollection<Dictionary<string, string>>> ReadMatchingRowsAsync(
         string filePath,
-        Func<Dictionary<string, string>, bool> predicate,
-        int maxRows)
+        Func<Dictionary<string, string>, bool> predicate)
     {
         var rows = new ObservableCollection<Dictionary<string, string>>();
-
-        if (maxRows <= 0) return rows;
 
         await EnsureHeadersLoadedAsync(filePath);
 
@@ -145,8 +141,6 @@ public class Parser
             if (!predicate(row)) continue;
 
             rows.Add(row);
-
-            if (rows.Count >= maxRows) break;
         }
 
         return rows;
