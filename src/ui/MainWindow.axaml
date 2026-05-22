@@ -3,7 +3,6 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        WindowState="Maximized"
         x:Class="CSVoom.MainWindow"
         Name="MainWindowElement"
         Title="CSVoom">
@@ -39,12 +38,23 @@
             IsReadOnly="True"
             GridLinesVisibility="All"
             HeadersVisibility="All" />
-        <TextBlock
+        <StackPanel 
             Grid.Row="3"
-            Margin="8,8,8,8"
-            x:Name="StatusTextBlock"
-            HorizontalAlignment="Left"
-            FontSize="16"
-            Text="Choose a CSV file to display its contents." />
+            Orientation="Horizontal">
+            <TextBlock
+                Margin="8,8,8,8"
+                x:Name="StatusTextBlock"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                FontSize="16"
+                Text="Choose a CSV file to display its contents." />
+            <TextBlock
+                Margin="8,8,8,8"
+                x:Name="FilterTextBlock"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                FontSize="16"
+                Text="" />
+        </StackPanel>
     </Grid>
 </Window>

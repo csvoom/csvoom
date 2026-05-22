@@ -292,6 +292,7 @@ public partial class MainWindow : Window
 
                     _gridView.Filter = null!;
                     _gridView.Refresh();
+                    FilterTextBlock.Text = "";
                     StatusTextBlock.Text = "Filter cleared.";
                     break;
                 }
@@ -311,7 +312,7 @@ public partial class MainWindow : Window
                                && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase);
                     };
                     _gridView.Refresh();
-                    StatusTextBlock.Text = $"Filtered rows where column \"{matchingHeader}\" is not empty and not \\N.";
+                    FilterTextBlock.Text = $"Filtered rows where column \"{matchingHeader}\" is not empty and not \\N.";
                     break;
                 }
 
@@ -333,7 +334,7 @@ public partial class MainWindow : Window
                     return false;
                 };
                 _gridView.Refresh();
-                StatusTextBlock.Text = $"Filtered rows containing \"{arguments[0]}\".";
+                FilterTextBlock.Text = $"Filtered rows containing \"{arguments[0]}\".";
                 break;
             case 2:
                 // Much like the find command, the user can specify both a column name and a value to filter by.
@@ -702,10 +703,8 @@ public partial class MainWindow : Window
     private void SetIsBusy(bool toStatus)
     {
         RunButton.Content = toStatus ? "Cancel" : "Run";
-        RunButton.IsEnabled = true;
         OpenCsvButton.IsEnabled = !toStatus;
         _isBusy = toStatus;
-        Console.WriteLine($": {toStatus}");
     }
 
     /// <summary>
