@@ -4,7 +4,9 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CSVoom.app;
@@ -20,8 +22,12 @@ public class Parser
     /// <summary>
     ///     Asynchronously lists raw lines from a CSV file or decompressed GZIP stream.
     /// </summary>
-    private async IAsyncEnumerator<string> ParserLineEnumerator(string filePath)
+    private async IAsyncEnumerator<string> ParserLineEnumerator(
+        string filePath,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!File.Exists(filePath))
         {
             Console.WriteLine("File not found: " + filePath);
@@ -36,8 +42,9 @@ public class Parser
             await using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
             using var reader = new StreamReader(gzipStream);
 
-            while (await reader.ReadLineAsync() is { } line)
+            while (await reader.ReadLineAsync(cancellationToken) is { } line)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 yield return line;
                 await Task.Yield();
             }
@@ -49,8 +56,9 @@ public class Parser
         {
             using var reader = File.OpenText(filePath);
 
-            while (await reader.ReadLineAsync() is { } line)
+            while (await reader.ReadLineAsync(cancellationToken) is { } line)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 yield return line;
                 await Task.Yield();
             }
@@ -66,9 +74,11 @@ public class Parser
     /// <summary>
     ///     Reads the first row of the file and stores it as the parser's header collection.
     /// </summary>
-    public async Task<IReadOnlyList<string>> ReadHeadersAsync(string filePath)
+    public async Task<IReadOnlyList<string>> ReadHeadersAsync(
+        string filePath,
+        CancellationToken cancellationToken = default)
     {
-        await using var enumerator = ParserLineEnumerator(filePath);
+        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
 
         if (await enumerator.MoveNextAsync())
             Headers = ParseCsvLine(enumerator.Current);
@@ -84,15 +94,16 @@ public class Parser
     public async Task<ObservableCollection<Dictionary<string, string>>> ReadRangeAsync(
         string filePath,
         int startRow,
-        int endRow)
+        int endRow,
+        CancellationToken cancellationToken = default)
     {
         var rows = new ObservableCollection<Dictionary<string, string>>();
 
         if (startRow <= 0 || endRow < startRow) return rows;
 
-        await EnsureHeadersLoadedAsync(filePath);
+        await EnsureHeadersLoadedAsync(filePath, cancellationToken);
 
-        await using var enumerator = ParserLineEnumerator(filePath);
+        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
 
         if (!await enumerator.MoveNextAsync()) return rows;
 
@@ -100,6 +111,8 @@ public class Parser
 
         while (await enumerator.MoveNextAsync())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             currentRowNumber++;
 
             if (currentRowNumber < startRow) continue;
@@ -115,18 +128,16 @@ public class Parser
     /// <summary>
     ///     Reads rows that satisfy the supplied predicate, up to the requested maximum number of rows.
     /// </summary>
-    /// <summary>
-    ///     Reads rows that satisfy the supplied predicate, up to the requested maximum number of rows.
-    /// </summary>
     public async Task<ObservableCollection<Dictionary<string, string>>> ReadMatchingRowsAsync(
         string filePath,
-        Func<Dictionary<string, string>, bool> predicate)
+        Func<Dictionary<string, string>, bool> predicate,
+        CancellationToken cancellationToken = default)
     {
         var rows = new ObservableCollection<Dictionary<string, string>>();
 
-        await EnsureHeadersLoadedAsync(filePath);
+        await EnsureHeadersLoadedAsync(filePath, cancellationToken);
 
-        await using var enumerator = ParserLineEnumerator(filePath);
+        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
 
         if (!await enumerator.MoveNextAsync()) return rows;
 
@@ -134,6 +145,8 @@ public class Parser
 
         while (await enumerator.MoveNextAsync())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             currentRowNumber++;
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
@@ -152,9 +165,10 @@ public class Parser
     public Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindFirstAsync(
         string filePath,
         string searchText,
-        string? searchHeader = null)
+        string? searchHeader = null,
+        CancellationToken cancellationToken = default)
     {
-        return FindNextAsync(filePath, searchText, searchHeader);
+        return FindNextAsync(filePath, searchText, searchHeader, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -165,18 +179,19 @@ public class Parser
         string searchText,
         string? searchHeader = null,
         int startAfterRowNumber = 0,
-        string? startAfterHeader = null)
+        string? startAfterHeader = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(searchText)) return null;
 
-        await EnsureHeadersLoadedAsync(filePath);
+        await EnsureHeadersLoadedAsync(filePath, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(searchHeader)
             && !searchHeader.Equals(RowNumberKey, StringComparison.OrdinalIgnoreCase)
             && !Headers.Contains(searchHeader, StringComparer.OrdinalIgnoreCase))
             return null;
 
-        await using var enumerator = ParserLineEnumerator(filePath);
+        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
 
         if (!await enumerator.MoveNextAsync()) return null;
 
@@ -214,6 +229,8 @@ public class Parser
 
         while (await enumerator.MoveNextAsync())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             currentRowNumber++;
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
@@ -267,11 +284,13 @@ public class Parser
     /// <summary>
     ///     Loads headers from the file if they have not already been read.
     /// </summary>
-    private async Task EnsureHeadersLoadedAsync(string filePath)
+    private async Task EnsureHeadersLoadedAsync(
+        string filePath,
+        CancellationToken cancellationToken = default)
     {
         if (Headers.Count > 0) return;
 
-        await ReadHeadersAsync(filePath);
+        await ReadHeadersAsync(filePath, cancellationToken);
     }
 
     /// <summary>

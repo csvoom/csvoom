@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Collections;
@@ -49,8 +50,9 @@ public partial class MainWindow : Window
     private string? _currentFileName;
     private string? _currentFilePath;
     private bool _isBusy;
+    private CancellationTokenSource? _commandCancellationTokenSource;
     private Window? _findResultsWindow;
-    
+
     /// <summary>
     ///     Initializes the main window and connects the visible row collection to the data grid.
     /// </summary>
@@ -60,9 +62,13 @@ public partial class MainWindow : Window
         CommandTextBox.ItemsSource = CommandSuggestions;
         _gridView = new DataGridCollectionView(_visibleRows);
         CsvDataGrid.ItemsSource = _gridView;
-        Closed += (_, _) => CloseFindResultsWindow();
+        Closed += (_, _) =>
+        {
+            CancelCurrentOperation();
+            CloseFindResultsWindow();
+        };
     }
-    
+
     // Commands
 
     /// <summary>
@@ -75,6 +81,10 @@ public partial class MainWindow : Window
         CloseFindResultsWindow();
         SetIsBusy(true);
 
+        using var cancellationTokenSource = new CancellationTokenSource();
+        _commandCancellationTokenSource = cancellationTokenSource;
+        var cancellationToken = cancellationTokenSource.Token;
+
         try
         {
             var parts = commandText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -84,13 +94,13 @@ public partial class MainWindow : Window
             {
                 // Check for command type and pass to intended recipient
                 case "load":
-                    await Command_LoadAsync(arguments);
+                    await Command_LoadAsync(arguments, cancellationToken);
                     return;
                 case "find":
-                    Command_Find(arguments);
+                    Command_Find(arguments, cancellationToken);
                     return;
                 case "filter":
-                    Command_Filter(arguments);
+                    Command_Filter(arguments, cancellationToken);
                     return;
                 case "hide":
                     Command_Hide(arguments);
@@ -103,8 +113,15 @@ public partial class MainWindow : Window
                     return;
             }
         }
+        catch (OperationCanceledException)
+        {
+            StatusTextBlock.Text = "Operation canceled.";
+        }
         finally
         {
+            if (ReferenceEquals(_commandCancellationTokenSource, cancellationTokenSource))
+                _commandCancellationTokenSource = null;
+
             SetIsBusy(false);
         }
     }
@@ -112,7 +129,7 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Handles the load command by parsing a row range and loading it into the view.
     /// </summary>
-    private async Task Command_LoadAsync(string[] arguments)
+    private async Task Command_LoadAsync(string[] arguments, CancellationToken cancellationToken)
     {
         const string errorMessage = "Usage: load (int) / load (int) (int)";
         switch (arguments.Length)
@@ -127,7 +144,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                await LoadRangeIntoViewAsync(startRow, startRow + AutoVisibleRows);
+                await LoadRangeIntoViewAsync(startRow, startRow + AutoVisibleRows, cancellationToken);
                 break;
             case 2: // Load between arguments [0] and [1]
                 if (!int.TryParse(arguments[0], out startRow) || !int.TryParse(arguments[1], out var endRow) ||
@@ -137,7 +154,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                await LoadRangeIntoViewAsync(startRow, endRow);
+                await LoadRangeIntoViewAsync(startRow, endRow, cancellationToken);
                 break;
             default:
                 StatusTextBlock.Text = errorMessage;
@@ -148,7 +165,7 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Handles the find command by locating all matching visible cells and showing them in a popup window.
     /// </summary>
-    private void Command_Find(string[] arguments)
+    private void Command_Find(string[] arguments, CancellationToken cancellationToken)
     {
         string searchText;
         string? searchHeader = null;
@@ -212,20 +229,26 @@ public partial class MainWindow : Window
         var foundInstances = new List<FindResult>();
 
         foreach (var row in visibleRowsToSearch)
-        foreach (var header in visibleHeadersToSearch)
         {
-            if (!row.TryGetValue(header, out var value)) continue;
-            if (!value.Contains(searchText, StringComparison.OrdinalIgnoreCase)) continue;
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var rowNumberText = row.GetValueOrDefault(Parser.RowNumberKey, "?");
-
-            foundInstances.Add(new FindResult
+            foreach (var header in visibleHeadersToSearch)
             {
-                Row = row,
-                Header = header,
-                Value = value,
-                RowNumber = rowNumberText
-            });
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!row.TryGetValue(header, out var value)) continue;
+                if (!value.Contains(searchText, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var rowNumberText = row.GetValueOrDefault(Parser.RowNumberKey, "?");
+
+                foundInstances.Add(new FindResult
+                {
+                    Row = row,
+                    Header = header,
+                    Value = value,
+                    RowNumber = rowNumberText
+                });
+            }
         }
 
         if (foundInstances.Count == 0)
@@ -254,7 +277,7 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Handles the filter command by applying or clearing the current grid filter.
     /// </summary>
-    private void Command_Filter(string[] arguments)
+    private void Command_Filter(string[] arguments, CancellationToken cancellationToken)
     {
         switch (arguments.Length)
         {
@@ -265,6 +288,8 @@ public partial class MainWindow : Window
                 // Remove the filter
                 if (arguments[0].Equals("clear", StringComparison.OrdinalIgnoreCase))
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     _gridView.Filter = null!;
                     _gridView.Refresh();
                     StatusTextBlock.Text = "Filter cleared.";
@@ -278,6 +303,8 @@ public partial class MainWindow : Window
                     var matchingHeader = Parser.Headers[ToDataColumnIndex(matchingColumnIndex)];
                     _gridView.Filter = item =>
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
+
                         if (item is not Dictionary<string, string> row) return false;
                         if (!row.TryGetValue(matchingHeader, out var value)) return false;
                         return !string.IsNullOrWhiteSpace(value)
@@ -291,9 +318,13 @@ public partial class MainWindow : Window
                 // Applies a filter to only show matching words
                 _gridView.Filter = item =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     if (item is not Dictionary<string, string> row) return false;
                     foreach (var header in Parser.Headers)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
+
                         if (!row.TryGetValue(header, out var value)) continue;
 
                         if (value.Contains(arguments[0], StringComparison.OrdinalIgnoreCase)) return true;
@@ -391,10 +422,16 @@ public partial class MainWindow : Window
     // UI interaction
 
     /// <summary>
-    ///     Runs the command currently entered in the command text box.
+    ///     Runs the command currently entered in the command text box, or cancels the current operation while busy.
     /// </summary>
     private async void RunCommandButton_Click(object? sender, RoutedEventArgs e)
     {
+        if (_isBusy)
+        {
+            CancelCurrentOperation();
+            return;
+        }
+
         await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
     }
 
@@ -404,6 +441,13 @@ public partial class MainWindow : Window
     private async void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
+        if (_isBusy)
+        {
+            CancelCurrentOperation();
+            e.Handled = true;
+            return;
+        }
+
         await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
         e.Handled = true;
     }
@@ -435,65 +479,98 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = "Unable to open the file picker.";
             return;
         }
-        
+
         SetIsBusy(true);
 
-        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Open CSV file",
-            AllowMultiple = false,
-            FileTypeFilter =
-            [
-                new FilePickerFileType("CSV files")
-                {
-                    Patterns = ["*.csv", "*.gz"]
-                }
-            ]
-        });
-        if (files.Count == 0) return;
-        CsvDataGrid.FrozenColumnCount = 0;
-        _currentFilePath = files[0].Path.LocalPath;
-        _currentFileName = files[0].Name;
-        _gridView.Filter = null;
-        _visibleRows.Clear();
-        _columnsByName.Clear();
-        _columnsByLetter.Clear();
-        CsvDataGrid.Columns.Clear();
-        StatusTextBlock.Text = $"Loading {_currentFileName}...";
-        
-        await Parser.ReadHeadersAsync(_currentFilePath);
-        var rowNumberColumn = new DataGridTextColumn
-        {
-            Header = "1",
-            Binding = new Binding($"[{Parser.RowNumberKey}]"),
-            SortMemberPath = $"[{Parser.RowNumberKey}]",
-            IsReadOnly = true,
-            CanUserSort = false
-        };
-        CsvDataGrid.Columns.Add(rowNumberColumn);
-        _columnsByName[Parser.RowNumberKey] = rowNumberColumn;
-        _columnsByLetter["1"] = rowNumberColumn;
-        for (var i = 0; i < Parser.Headers.Count; i++)
-        {
-            var header = Parser.Headers[i];
-            var columnLetter = GetColumnLetter(i);
-            var column = new DataGridTextColumn
-            {
-                Header = $"{columnLetter}: {header}",
-                Binding = new Binding($"[{header}]"),
-                SortMemberPath = $"[{header}]"
-            };
-            CsvDataGrid.Columns.Add(column);
-            _columnsByName[header] = column;
-            _columnsByLetter[columnLetter] = column;
-        }
+        using var cancellationTokenSource = new CancellationTokenSource();
+        _commandCancellationTokenSource = cancellationTokenSource;
+        var cancellationToken = cancellationTokenSource.Token;
 
-        _ = LoadRangeIntoViewAsync(1, AutoVisibleRows);
-        
-        SetIsBusy(false);
+        try
+        {
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Open CSV file",
+                AllowMultiple = false,
+                FileTypeFilter =
+                [
+                    new FilePickerFileType("CSV files")
+                    {
+                        Patterns = ["*.csv", "*.gz"]
+                    }
+                ]
+            });
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (files.Count == 0) return;
+            CsvDataGrid.FrozenColumnCount = 0;
+            _currentFilePath = files[0].Path.LocalPath;
+            _currentFileName = files[0].Name;
+            _gridView.Filter = null;
+            _visibleRows.Clear();
+            _columnsByName.Clear();
+            _columnsByLetter.Clear();
+            CsvDataGrid.Columns.Clear();
+            StatusTextBlock.Text = $"Loading {_currentFileName}...";
+
+            await Parser.ReadHeadersAsync(_currentFilePath, cancellationToken);
+
+            var rowNumberColumn = new DataGridTextColumn
+            {
+                Header = "1",
+                Binding = new Binding($"[{Parser.RowNumberKey}]"),
+                SortMemberPath = $"[{Parser.RowNumberKey}]",
+                IsReadOnly = true,
+                CanUserSort = false
+            };
+            CsvDataGrid.Columns.Add(rowNumberColumn);
+            _columnsByName[Parser.RowNumberKey] = rowNumberColumn;
+            _columnsByLetter["1"] = rowNumberColumn;
+            for (var i = 0; i < Parser.Headers.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var header = Parser.Headers[i];
+                var columnLetter = GetColumnLetter(i);
+                var column = new DataGridTextColumn
+                {
+                    Header = $"{columnLetter}: {header}",
+                    Binding = new Binding($"[{header}]"),
+                    SortMemberPath = $"[{header}]"
+                };
+                CsvDataGrid.Columns.Add(column);
+                _columnsByName[header] = column;
+                _columnsByLetter[columnLetter] = column;
+            }
+
+            await LoadRangeIntoViewAsync(1, AutoVisibleRows, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusTextBlock.Text = "Operation canceled.";
+        }
+        finally
+        {
+            if (ReferenceEquals(_commandCancellationTokenSource, cancellationTokenSource))
+                _commandCancellationTokenSource = null;
+
+            SetIsBusy(false);
+        }
     }
 
     // Utility
+
+    /// <summary>
+    ///     Cancels the currently running command or parser operation.
+    /// </summary>
+    private void CancelCurrentOperation()
+    {
+        if (!_isBusy) return;
+
+        StatusTextBlock.Text = "Canceling operation...";
+        _commandCancellationTokenSource?.Cancel();
+    }
 
     ///     Shows all visible find results in a popup window. Selecting a result scrolls the main grid to that cell.
     /// </summary>
@@ -580,7 +657,10 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Loads the requested row range from the current file into the visible grid collection.
     /// </summary>
-    private async Task LoadRangeIntoViewAsync(int startRow, int endRow)
+    private async Task LoadRangeIntoViewAsync(
+        int startRow,
+        int endRow,
+        CancellationToken cancellationToken = default)
     {
         if (_currentFilePath is null) return;
 
@@ -593,7 +673,10 @@ public partial class MainWindow : Window
         try
         {
             StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
-            var rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow);
+            var rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
             ReplaceVisibleRows(rows);
 
             if (!rows.Any())
@@ -616,7 +699,8 @@ public partial class MainWindow : Window
     /// <param name="toStatus">Sets the UI to busy state if true, sets to available state if false</param>
     private void SetIsBusy(bool toStatus)
     {
-        RunButton.IsEnabled = !toStatus;
+        RunButton.Content = toStatus ? "Cancel" : "Run";
+        RunButton.IsEnabled = true;
         OpenCsvButton.IsEnabled = !toStatus;
         _isBusy = toStatus;
         Console.WriteLine($": {toStatus}");
