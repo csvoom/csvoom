@@ -24,7 +24,7 @@ public class Parser
     /// </summary>
     private async IAsyncEnumerator<string> ParserLineEnumerator(
         string filePath,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 

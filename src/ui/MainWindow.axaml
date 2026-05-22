@@ -5,6 +5,7 @@
         mc:Ignorable="d"
         WindowState="Maximized"
         x:Class="CSVoom.MainWindow"
+        Name="MainWindowElement"
         Title="CSVoom">
     <Grid RowDefinitions="Auto,Auto,*,Auto">
         <StackPanel

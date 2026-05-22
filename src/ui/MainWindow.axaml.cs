@@ -507,6 +507,7 @@ public partial class MainWindow : Window
             CsvDataGrid.FrozenColumnCount = 0;
             _currentFilePath = files[0].Path.LocalPath;
             _currentFileName = files[0].Name;
+            MainWindowElement.Title = $"CSVoom - {_currentFileName}";
             _gridView.Filter = null;
             _visibleRows.Clear();
             _columnsByName.Clear();
@@ -572,6 +573,7 @@ public partial class MainWindow : Window
         _commandCancellationTokenSource?.Cancel();
     }
 
+    /// <summary>
     ///     Shows all visible find results in a popup window. Selecting a result scrolls the main grid to that cell.
     /// </summary>
     private void ShowFindResultsWindow(string searchText, IReadOnlyList<FindResult> foundInstances)
