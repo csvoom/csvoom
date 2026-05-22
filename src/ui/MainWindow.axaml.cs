@@ -35,10 +35,10 @@ public partial class MainWindow : Window
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["load"] = "Arguments: start(int) / start(int) end(int)",
-            ["find"] = "Arguments: word / word columnName / word /regex/",
-            ["filter"] = "Arguments: word / columnName / /regex/ / 'clear'",
-            ["hide"] = "Arguments: letter / columnName / /regex/",
-            ["unhide"] = "Arguments: all / letter / columnName / /regex/"
+            ["find"] = "Arguments: word / /regex/ / word columnName / /columnRegex/",
+            ["filter"] = "Arguments: word / /regex/ / columnName / /columnRegex/ / 'clear'",
+            ["hide"] = "Arguments: letter / columnName / /columnRegex/",
+            ["unhide"] = "Arguments: all / letter / columnName / /columnRegex/"
         };
 
     private static readonly Parser Parser = new();
@@ -170,11 +170,12 @@ public partial class MainWindow : Window
     {
         string searchText;
         string? searchHeader = null;
+        IReadOnlyList<string>? explicitHeadersToSearch = null;
 
         switch (arguments.Length)
         {
             case 0:
-                StatusTextBlock.Text = "Usage: find word or find word columnName";
+                StatusTextBlock.Text = "Usage: find word, find /regex/, find word columnName, or find /regex/ /columnRegex/";
                 return;
             case 1:
                 searchText = arguments[0];
@@ -183,33 +184,35 @@ public partial class MainWindow : Window
                 searchText = arguments[0];
                 var columnSearchValue = arguments[1];
 
-                var matchingHeaders = FindVisibleHeadersByNameLetterOrRegex(columnSearchValue);
-                if (matchingHeaders.Count == 0)
+                explicitHeadersToSearch = FindVisibleHeadersByNameLetterOrRegex(columnSearchValue);
+                if (explicitHeadersToSearch.Count == 0)
                 {
                     StatusTextBlock.Text = $"Column target not found: {columnSearchValue}";
                     return;
                 }
 
-                searchHeader = matchingHeaders.Count == 1 ? matchingHeaders[0] : null;
+                searchHeader = explicitHeadersToSearch.Count == 1 ? explicitHeadersToSearch[0] : null;
                 break;
             default:
-                StatusTextBlock.Text = "Usage: find word or find word columnName";
+                StatusTextBlock.Text = "Usage: find word, find /regex/, find word columnName, or find /regex/ /columnRegex/";
                 return;
         }
 
+        var searchDescription = IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
+
         StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-            ? $"Searching visible cells for \"{searchText}\"..."
+            ? $"Searching visible cells for {searchDescription}..."
             : searchHeader == Parser.RowNumberKey
-                ? $"Searching visible row numbers for \"{searchText}\"..."
-                : $"Searching visible column {searchHeader} for \"{searchText}\"...";
+                ? $"Searching visible row numbers for {searchDescription}..."
+                : $"Searching visible column {searchHeader} for {searchDescription}...";
 
         var visibleHeadersToSearch = new List<string>();
 
-        if (arguments.Length == 2)
+        if (explicitHeadersToSearch is not null)
         {
-            visibleHeadersToSearch.AddRange(FindVisibleHeadersByNameLetterOrRegex(arguments[1]));
+            visibleHeadersToSearch.AddRange(explicitHeadersToSearch);
         }
-        else if (string.IsNullOrWhiteSpace(searchHeader))
+        else
         {
             foreach (var column in CsvDataGrid.Columns.Where(column => column.IsVisible))
             {
@@ -218,10 +221,6 @@ public partial class MainWindow : Window
                     ? Parser.RowNumberKey
                     : Parser.Headers[ToDataColumnIndex(columnIndex)]);
             }
-        }
-        else
-        {
-            visibleHeadersToSearch.Add(searchHeader);
         }
 
         var visibleRowsToSearch = _gridView
@@ -239,7 +238,7 @@ public partial class MainWindow : Window
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (!row.TryGetValue(header, out var value)) continue;
-                if (!value.Contains(searchText, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!MatchesSearchTarget(value, searchText)) continue;
 
                 var rowNumberText = row.GetValueOrDefault(Parser.RowNumberKey, "?");
 
@@ -256,25 +255,25 @@ public partial class MainWindow : Window
         if (foundInstances.Count == 0)
         {
             StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-                ? $"No visible matches found for \"{searchText}\"."
+                ? $"No visible matches found for {searchDescription}."
                 : searchHeader == Parser.RowNumberKey
-                    ? $"No visible matches found for \"{searchText}\" in visible row numbers."
-                    : $"No visible matches found for \"{searchText}\" in visible column {searchHeader}.";
-            return;
-        }
-
-        ShowFindResultsWindow(searchText, foundInstances);
-
-        var firstMatch = foundInstances[0];
-        ScrollToMatch(firstMatch.Row, firstMatch.Header);
-
-        var foundColumnText = firstMatch.Header == Parser.RowNumberKey
-            ? "row numbers"
-            : firstMatch.Header;
-
-        StatusTextBlock.Text =
-            $"Found {foundInstances.Count:N0} visible instance(s) of \"{searchText}\". First match at visible row {firstMatch.RowNumber}, column {foundColumnText}.";
+                    ? $"No visible matches found for {searchDescription} in visible row numbers."
+                    : $"No visible matches found for {searchDescription} in visible column {searchHeader}.";
+        return;
     }
+
+    ShowFindResultsWindow(searchText, foundInstances);
+
+    var firstMatch = foundInstances[0];
+    ScrollToMatch(firstMatch.Row, firstMatch.Header);
+
+    var foundColumnText = firstMatch.Header == Parser.RowNumberKey
+        ? "row numbers"
+        : firstMatch.Header;
+
+    StatusTextBlock.Text =
+        $"Found {foundInstances.Count:N0} visible instance(s) of {searchDescription}. First match at visible row {firstMatch.RowNumber}, column {foundColumnText}.";
+}
 
     /// <summary>
     ///     Handles the filter command by applying or clearing the current grid filter.
@@ -284,7 +283,7 @@ public partial class MainWindow : Window
         switch (arguments.Length)
         {
             case 0:
-                StatusTextBlock.Text = "Usage: filter word, filter columnName, or filter clear";
+                StatusTextBlock.Text = "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, filter word columnName, or filter clear";
                 break;
             case 1:
                 // Remove the filter
@@ -327,12 +326,12 @@ public partial class MainWindow : Window
 
                     FilterTextBlock.Text = matchingHeaders.Count == 1
                         ? $"Filtered rows where column \"{matchingHeaders[0]}\" is not empty and not \\N."
-                        : $"Filtered rows where any of {matchingHeaders.Count} regex-matched columns are not empty and not \\N.";
+                        : $"Filtered rows where any of {matchingHeaders.Count} matched columns are not empty and not \\N.";
 
                     break;
                 }
 
-                // Applies a filter to only show matching words
+                // Applies a filter to only show matching values. The target can be plain text or /regex/.
                 _gridView.Filter = item =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -344,20 +343,57 @@ public partial class MainWindow : Window
 
                         if (!row.TryGetValue(header, out var value)) continue;
 
-                        if (value.Contains(arguments[0], StringComparison.OrdinalIgnoreCase)) return true;
+                        if (MatchesSearchTarget(value, arguments[0])) return true;
                     }
 
                     return false;
                 };
                 _gridView.Refresh();
-                FilterTextBlock.Text = $"Filtered rows containing \"{arguments[0]}\".";
+
+                FilterTextBlock.Text = IsRegexTarget(arguments[0])
+                    ? $"Filtered rows matching regex {arguments[0]}."
+                    : $"Filtered rows containing \"{arguments[0]}\".";
                 break;
             case 2:
-                // Much like the find command, the user can specify both a column name and a value to filter by.
-                Console.WriteLine("NOT IMPLEMENTED");
+                var valueSearchTarget = arguments[0];
+                var columnSearchTarget = arguments[1];
+                var headersToSearch = FindHeadersByNameLetterOrRegex(columnSearchTarget);
+
+                if (headersToSearch.Count == 0)
+                {
+                    StatusTextBlock.Text = $"Column target not found: {columnSearchTarget}";
+                    break;
+                }
+
+                _gridView.Filter = item =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (item is not Dictionary<string, string> row) return false;
+
+                    foreach (var header in headersToSearch)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        if (!row.TryGetValue(header, out var value)) continue;
+                        if (MatchesSearchTarget(value, valueSearchTarget)) return true;
+                    }
+
+                    return false;
+                };
+
+                _gridView.Refresh();
+
+                var valueDescription = IsRegexTarget(valueSearchTarget)
+                    ? $"regex {valueSearchTarget}"
+                    : $"\"{valueSearchTarget}\"";
+
+                FilterTextBlock.Text = headersToSearch.Count == 1
+                    ? $"Filtered rows where column \"{headersToSearch[0]}\" matches {valueDescription}."
+                    : $"Filtered rows where any of {headersToSearch.Count} matched columns match {valueDescription}.";
                 break;
             default:
-                StatusTextBlock.Text = "Usage: filter columnName value";
+                StatusTextBlock.Text = "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, or filter word columnName";
                 break;
         }
     }
@@ -826,12 +862,12 @@ public partial class MainWindow : Window
         return matchingColumns;
     }
 
-    /// <summary>
-    ///     Finds parser headers by exact column name, spreadsheet-style letter, or a slash-delimited regex.
-    /// </summary>
-    private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
-    {
-        return FindColumnsByNameLetterOrRegex(searchValue, includeHidden: true)
+/// <summary>
+///     Finds parser headers by exact column name, spreadsheet-style letter, or a slash-delimited regex.
+/// </summary>
+private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
+{
+    return FindColumnsByNameLetterOrRegex(searchValue, includeHidden: true)
             .Select(column =>
             {
                 var columnIndex = CsvDataGrid.Columns.IndexOf(column);
@@ -894,11 +930,11 @@ public partial class MainWindow : Window
     /// </summary>
      /// <param name="searchValue">Value to search by</param>
      /// <returns></returns>
-    private int FindColumnIndexByNameOrLetter(string searchValue)
-    {
-        var column = FindColumnByNameOrLetter(searchValue);
-        return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
-    }
+     private int FindColumnIndexByNameOrLetter(string searchValue)
+     {
+         var column = FindColumnByNameOrLetter(searchValue);
+         return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
+     }
 
     /// <summary>
     ///     Converts a grid column index to the corresponding parser data column index.
@@ -923,4 +959,22 @@ public partial class MainWindow : Window
             return $"Row {RowNumber}, Column {columnText}: {Value}";
         }
     }
+
+private static bool IsRegexTarget(string searchValue)
+{
+    return searchValue.Length >= 2 && searchValue[0] == '/' && searchValue[^1] == '/';
+}
+
+/// <summary>
+///     Matches a cell value against either plain text or a slash-delimited regex target.
+/// </summary>
+private bool MatchesSearchTarget(string value, string searchTarget)
+{
+    if (!TryCreateRegexTarget(searchTarget, out var regex))
+    {
+        return value.Contains(searchTarget, StringComparison.OrdinalIgnoreCase);
+    }
+
+    return regex.IsMatch(value);
+}
 }
