@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -34,10 +35,10 @@ public partial class MainWindow : Window
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["load"] = "Arguments: start(int) / start(int) end(int)",
-            ["find"] = "Arguments: word / word columnName / columnName",
-            ["filter"] = "Arguments: word / columnName / 'clear'",
-            ["hide"] = "Arguments: letter letter / columnName1 columnName2",
-            ["unhide"] = "Arguments: all"
+            ["find"] = "Arguments: word / word columnName / word /regex/",
+            ["filter"] = "Arguments: word / columnName / /regex/ / 'clear'",
+            ["hide"] = "Arguments: letter / columnName / /regex/",
+            ["unhide"] = "Arguments: all / letter / columnName / /regex/"
         };
 
     private static readonly Parser Parser = new();
@@ -181,22 +182,15 @@ public partial class MainWindow : Window
             case 2:
                 searchText = arguments[0];
                 var columnSearchValue = arguments[1];
-                var columnIndex = FindColumnIndexByNameOrLetter(columnSearchValue);
-                if (columnIndex < 0)
+
+                var matchingHeaders = FindVisibleHeadersByNameLetterOrRegex(columnSearchValue);
+                if (matchingHeaders.Count == 0)
                 {
-                    StatusTextBlock.Text = $"Column not found: {columnSearchValue}";
+                    StatusTextBlock.Text = $"Column target not found: {columnSearchValue}";
                     return;
                 }
 
-                if (!CsvDataGrid.Columns[columnIndex].IsVisible)
-                {
-                    StatusTextBlock.Text = $"Column is hidden: {columnSearchValue}";
-                    return;
-                }
-
-                searchHeader = columnIndex == 0
-                    ? Parser.RowNumberKey
-                    : Parser.Headers[ToDataColumnIndex(columnIndex)];
+                searchHeader = matchingHeaders.Count == 1 ? matchingHeaders[0] : null;
                 break;
             default:
                 StatusTextBlock.Text = "Usage: find word or find word columnName";
@@ -211,7 +205,12 @@ public partial class MainWindow : Window
 
         var visibleHeadersToSearch = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(searchHeader))
+        if (arguments.Length == 2)
+        {
+            visibleHeadersToSearch.AddRange(FindVisibleHeadersByNameLetterOrRegex(arguments[1]));
+        }
+        else if (string.IsNullOrWhiteSpace(searchHeader))
+        {
             foreach (var column in CsvDataGrid.Columns.Where(column => column.IsVisible))
             {
                 var columnIndex = CsvDataGrid.Columns.IndexOf(column);
@@ -219,8 +218,11 @@ public partial class MainWindow : Window
                     ? Parser.RowNumberKey
                     : Parser.Headers[ToDataColumnIndex(columnIndex)]);
             }
+        }
         else
+        {
             visibleHeadersToSearch.Add(searchHeader);
+        }
 
         var visibleRowsToSearch = _gridView
             .Cast<Dictionary<string, string>>()
@@ -297,22 +299,36 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                // Applies a filter to clean a column of non-important data
-                var matchingColumnIndex = FindColumnIndexByNameOrLetter(arguments[0]);
-                if (matchingColumnIndex > 0)
+                var matchingHeaders = FindHeadersByNameLetterOrRegex(arguments[0]);
+                if (matchingHeaders.Count > 0)
                 {
-                    var matchingHeader = Parser.Headers[ToDataColumnIndex(matchingColumnIndex)];
                     _gridView.Filter = item =>
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
                         if (item is not Dictionary<string, string> row) return false;
-                        if (!row.TryGetValue(matchingHeader, out var value)) return false;
-                        return !string.IsNullOrWhiteSpace(value)
-                               && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase);
+
+                        foreach (var matchingHeader in matchingHeaders)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+
+                            if (!row.TryGetValue(matchingHeader, out var value)) continue;
+                            if (!string.IsNullOrWhiteSpace(value)
+                                && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return true;
+                            }
+                        }
+
+                        return false;
                     };
+
                     _gridView.Refresh();
-                    FilterTextBlock.Text = $"Filtered rows where column \"{matchingHeader}\" is not empty and not \\N.";
+
+                    FilterTextBlock.Text = matchingHeaders.Count == 1
+                        ? $"Filtered rows where column \"{matchingHeaders[0]}\" is not empty and not \\N."
+                        : $"Filtered rows where any of {matchingHeaders.Count} regex-matched columns are not empty and not \\N.";
+
                     break;
                 }
 
@@ -356,16 +372,22 @@ public partial class MainWindow : Window
             case 0: // No arguments provided
                 StatusTextBlock.Text = "Usage: hide a:x or hide columnName1:columnName2";
                 break;
-            case 1: // Hide single column
-                var column = FindColumnByNameOrLetter(arguments[0]);
-                if (column is null)
+            case 1: // Hide single column or regex-matched columns
+                var columnsToHide = FindColumnsByNameLetterOrRegex(arguments[0]);
+                if (columnsToHide.Count == 0)
                 {
-                    StatusTextBlock.Text = $"Column not found: {arguments[0]}";
+                    StatusTextBlock.Text = $"Column target not found: {arguments[0]}";
                     break;
                 }
 
-                column.IsVisible = false;
-                StatusTextBlock.Text = $"Hidden column {column.Header}.";
+                foreach (var columnToHide in columnsToHide)
+                {
+                    columnToHide.IsVisible = false;
+                }
+
+                StatusTextBlock.Text = columnsToHide.Count == 1
+                    ? $"Hidden column {columnsToHide[0].Header}."
+                    : $"Hidden {columnsToHide.Count} columns matching {arguments[0]}.";
                 break;
             case 2: // Hide range of columns
                 var startIndex = FindColumnIndexByNameOrLetter(arguments[0]);
@@ -411,8 +433,21 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                Console.WriteLine("NOT IMPLEMENTED"); // The user should be capable of selectively unhiding columns
-                StatusTextBlock.Text = "Usage: unhide all / unhide a:b / unhide columnName1:columnName2";
+                var columnsToUnhide = FindColumnsByNameLetterOrRegex(arguments[0], includeHidden: true);
+                if (columnsToUnhide.Count == 0)
+                {
+                    StatusTextBlock.Text = $"Column target not found: {arguments[0]}";
+                    break;
+                }
+
+                foreach (var columnToUnhide in columnsToUnhide)
+                {
+                    columnToUnhide.IsVisible = true;
+                }
+
+                StatusTextBlock.Text = columnsToUnhide.Count == 1
+                    ? $"Unhidden column {columnsToUnhide[0].Header}."
+                    : $"Unhidden {columnsToUnhide.Count} columns matching {arguments[0]}.";
                 break;
             default:
                 StatusTextBlock.Text = "Usage: unhide all / unhide a:b / unhide columnName1:columnName2";
@@ -423,7 +458,7 @@ public partial class MainWindow : Window
     // UI interaction
 
     /// <summary>
-    ///     Runs the command currently entered in the command text box, or cancels the current operation while busy.
+    ///     Runs the command currently entered in the command text box or cancels the current operation while busy.
     /// </summary>
     private async void RunCommandButton_Click(object? sender, RoutedEventArgs e)
     {
@@ -684,7 +719,7 @@ public partial class MainWindow : Window
 
             if (!rows.Any())
             {
-                StatusTextBlock.Text = $"No rows found in range {startRow:N0}:{endRow:N0}.";
+                StatusTextBlock.Text = $"No rows found in range {startRow:N0} {endRow:N0}.";
                 return;
             }
 
@@ -750,17 +785,121 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    ///     Finds columns by exact column name, spreadsheet-style letter, or a slash-delimited regex.
+    ///     Regex targets are matched against both raw CSV headers and displayed column headers.
+    /// </summary>
+    private IReadOnlyList<DataGridColumn> FindColumnsByNameLetterOrRegex(
+        string searchValue,
+        bool includeHidden = false)
+    {
+        if (string.IsNullOrWhiteSpace(searchValue)) return [];
+
+        var normalizedSearchValue = searchValue.Trim();
+
+        if (!TryCreateRegexTarget(normalizedSearchValue, out var regex))
+        {
+            var exactColumn = FindColumnByNameOrLetter(normalizedSearchValue);
+            return exactColumn is not null && (includeHidden || exactColumn.IsVisible)
+                ? [exactColumn]
+                : [];
+        }
+
+        var matchingColumns = new List<DataGridColumn>();
+
+        foreach (var column in CsvDataGrid.Columns)
+        {
+            if (!includeHidden && !column.IsVisible) continue;
+
+            var columnIndex = CsvDataGrid.Columns.IndexOf(column);
+            var dataHeader = columnIndex == 0
+                ? Parser.RowNumberKey
+                : Parser.Headers[ToDataColumnIndex(columnIndex)];
+
+            var displayHeader = column.Header?.ToString() ?? string.Empty;
+
+            if (regex.IsMatch(dataHeader) || regex.IsMatch(displayHeader))
+            {
+                matchingColumns.Add(column);
+            }
+        }
+
+        return matchingColumns;
+    }
+
+    /// <summary>
+    ///     Finds parser headers by exact column name, spreadsheet-style letter, or a slash-delimited regex.
+    /// </summary>
+    private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
+    {
+        return FindColumnsByNameLetterOrRegex(searchValue, includeHidden: true)
+            .Select(column =>
+            {
+                var columnIndex = CsvDataGrid.Columns.IndexOf(column);
+                return columnIndex == 0
+                    ? Parser.RowNumberKey
+                    : Parser.Headers[ToDataColumnIndex(columnIndex)];
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    ///     Finds visible parser headers by exact column name, spreadsheet-style letter, or a slash-delimited regex.
+    /// </summary>
+    private IReadOnlyList<string> FindVisibleHeadersByNameLetterOrRegex(string searchValue)
+    {
+        return FindColumnsByNameLetterOrRegex(searchValue)
+            .Select(column =>
+            {
+                var columnIndex = CsvDataGrid.Columns.IndexOf(column);
+                return columnIndex == 0
+                    ? Parser.RowNumberKey
+                    : Parser.Headers[ToDataColumnIndex(columnIndex)];
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    ///     Creates a regex from slash-delimited command target syntax, for example /name|email/.
+    /// </summary>
+    private bool TryCreateRegexTarget(string searchValue, out Regex regex)
+    {
+        regex = null!;
+
+        if (searchValue.Length < 2 || searchValue[0] != '/' || searchValue[^1] != '/')
+        {
+            return false;
+        }
+
+        var pattern = searchValue[1..^1];
+
+        try
+        {
+            regex = new Regex(
+                pattern,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                TimeSpan.FromMilliseconds(250));
+
+            return true;
+        }
+        catch (ArgumentException exception)
+        {
+            StatusTextBlock.Text = $"Invalid regex target: {exception.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
     ///     Searches for a data grid column by its display name or spreadsheet-style column letter. <br/>
     ///     Derives from FindColumnByNameOrLetter.
     /// </summary>
-    /// <param name="searchValue">Value to search by</param>
-    /// <returns></returns>
+     /// <param name="searchValue">Value to search by</param>
+     /// <returns></returns>
     private int FindColumnIndexByNameOrLetter(string searchValue)
     {
         var column = FindColumnByNameOrLetter(searchValue);
         return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
     }
-    
+
     /// <summary>
     ///     Converts a grid column index to the corresponding parser data column index.
     /// </summary>
