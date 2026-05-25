@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,7 +45,6 @@ public class Parser
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 yield return line;
-                await Task.Yield();
             }
 
             yield break;
@@ -60,7 +58,6 @@ public class Parser
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 yield return line;
-                await Task.Yield();
             }
 
             yield break;
@@ -245,7 +242,6 @@ public class Parser
 
             if (match is not null) return match;
         }
-
         return null;
     }
 
@@ -298,7 +294,7 @@ public class Parser
     /// </summary>
     private Dictionary<string, string> BuildRow(IReadOnlyList<string> values, int rowNumber)
     {
-        var row = new Dictionary<string, string>
+        var row = new Dictionary<string, string>(Headers.Count + 1)
         {
             [RowNumberKey] = rowNumber.ToString()
         };
@@ -313,8 +309,8 @@ public class Parser
     /// </summary>
     private static IReadOnlyList<string> ParseCsvLine(string line)
     {
-        var fields = new List<string>();
-        var current = new StringBuilder();
+        var fields = new List<string>(Math.Max(1, line.Length / 8));
+        var current = new StringBuilder(Math.Min(line.Length, 256));
         var inQuotes = false;
 
         for (var i = 0; i < line.Length; i++)

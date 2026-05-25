@@ -18,7 +18,6 @@ namespace CSVoom;
 
 public partial class MainWindow : Window
 {
-    private const int AutoVisibleRows = 10000;
     private const int RowNumberColumnOffset = 1;
 
     private static readonly IReadOnlyList<string> CommandSuggestions =
@@ -26,7 +25,6 @@ public partial class MainWindow : Window
         "load ",
         "find ",
         "filter ",
-        "filter clear",
         "hide ",
         "unhide all"
     ];
@@ -47,12 +45,12 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, DataGridColumn> _columnsByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly DataGridCollectionView _gridView;
     private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = new();
+    private CancellationTokenSource? _commandCancellationTokenSource;
 
     private string? _currentFileName;
     private string? _currentFilePath;
-    private bool _isBusy;
-    private CancellationTokenSource? _commandCancellationTokenSource;
     private Window? _findResultsWindow;
+    private bool _isBusy;
 
     /// <summary>
     ///     Initializes the main window and connects the visible row collection to the data grid.
@@ -60,7 +58,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        CommandTextBox.ItemsSource = CommandSuggestions;
+        CommandTextBox.ItemsSource = Configuration.MaxCommandHistoryItems > 0
+            ? CommandSuggestions.Take(Configuration.MaxCommandHistoryItems).ToArray()
+            : null;
+        CommandExampleTextBlock.IsVisible = Configuration.ShowCommandExamples;
         _gridView = new DataGridCollectionView(_visibleRows);
         CsvDataGrid.ItemsSource = _gridView;
         Closed += (_, _) =>
@@ -90,29 +91,39 @@ public partial class MainWindow : Window
         {
             var parts = commandText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var command = parts[0];
-            var arguments = parts[1..]; // Get the remaining parts as arguments
-            switch (command.ToLower())
+            var arguments = parts[1..];
+
+            if (command.Equals("load", StringComparison.OrdinalIgnoreCase))
             {
-                // Check for command type and pass to intended recipient
-                case "load":
-                    await Command_LoadAsync(arguments, cancellationToken);
-                    return;
-                case "find":
-                    Command_Find(arguments, cancellationToken);
-                    return;
-                case "filter":
-                    Command_Filter(arguments, cancellationToken);
-                    return;
-                case "hide":
-                    Command_Hide(arguments);
-                    return;
-                case "unhide":
-                    Command_Unhide(arguments);
-                    return;
-                default:
-                    StatusTextBlock.Text = $"Unknown command: {command}";
-                    return;
+                await Command_LoadAsync(arguments, cancellationToken);
+                return;
             }
+
+            if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
+            {
+                Command_Find(arguments, cancellationToken);
+                return;
+            }
+
+            if (command.Equals("filter", StringComparison.OrdinalIgnoreCase))
+            {
+                Command_Filter(arguments, cancellationToken);
+                return;
+            }
+
+            if (command.Equals("hide", StringComparison.OrdinalIgnoreCase))
+            {
+                Command_Hide(arguments);
+                return;
+            }
+
+            if (command.Equals("unhide", StringComparison.OrdinalIgnoreCase))
+            {
+                Command_Unhide(arguments);
+                return;
+            }
+
+            StatusTextBlock.Text = $"Unknown command: {command}";
         }
         catch (OperationCanceledException)
         {
@@ -145,7 +156,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                await LoadRangeIntoViewAsync(startRow, startRow + AutoVisibleRows, cancellationToken);
+                await LoadRangeIntoViewAsync(startRow, startRow + Configuration.AutoVisibleRows, cancellationToken);
                 break;
             case 2: // Load between arguments [0] and [1]
                 if (!int.TryParse(arguments[0], out startRow) || !int.TryParse(arguments[1], out var endRow) ||
@@ -175,7 +186,8 @@ public partial class MainWindow : Window
         switch (arguments.Length)
         {
             case 0:
-                StatusTextBlock.Text = "Usage: find word, find /regex/, find word columnName, or find /regex/ /columnRegex/";
+                StatusTextBlock.Text =
+                    "Usage: find word, find /regex/, find word columnName, or find /regex/ /columnRegex/";
                 return;
             case 1:
                 searchText = arguments[0];
@@ -194,7 +206,8 @@ public partial class MainWindow : Window
                 searchHeader = explicitHeadersToSearch.Count == 1 ? explicitHeadersToSearch[0] : null;
                 break;
             default:
-                StatusTextBlock.Text = "Usage: find word, find /regex/, find word columnName, or find /regex/ /columnRegex/";
+                StatusTextBlock.Text =
+                    "Usage: find word, find /regex/, find word columnName, or find /regex/ /columnRegex/";
                 return;
         }
 
@@ -209,42 +222,39 @@ public partial class MainWindow : Window
         var visibleHeadersToSearch = new List<string>();
 
         if (explicitHeadersToSearch is not null)
-        {
             visibleHeadersToSearch.AddRange(explicitHeadersToSearch);
-        }
         else
-        {
-            foreach (var column in CsvDataGrid.Columns.Where(column => column.IsVisible))
+            for (var columnIndex = 0; columnIndex < CsvDataGrid.Columns.Count; columnIndex++)
             {
-                var columnIndex = CsvDataGrid.Columns.IndexOf(column);
+                var column = CsvDataGrid.Columns[columnIndex];
+                if (!column.IsVisible) continue;
+
                 visibleHeadersToSearch.Add(columnIndex == 0
                     ? Parser.RowNumberKey
                     : Parser.Headers[ToDataColumnIndex(columnIndex)]);
             }
-        }
-
-        var visibleRowsToSearch = _gridView
-            .Cast<Dictionary<string, string>>()
-            .ToList();
 
         var foundInstances = new List<FindResult>();
+        var searchMatcher = CreateSearchMatcher(searchText);
 
-        foreach (var row in visibleRowsToSearch)
+        foreach (var row in _gridView)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (row is not Dictionary<string, string> visibleRow) continue;
 
             foreach (var header in visibleHeadersToSearch)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (!row.TryGetValue(header, out var value)) continue;
-                if (!MatchesSearchTarget(value, searchText)) continue;
+                if (!visibleRow.TryGetValue(header, out var value)) continue;
+                if (!searchMatcher(value)) continue;
 
-                var rowNumberText = row.GetValueOrDefault(Parser.RowNumberKey, "?");
+                var rowNumberText = visibleRow.GetValueOrDefault(Parser.RowNumberKey, "?");
 
                 foundInstances.Add(new FindResult
                 {
-                    Row = row,
+                    Row = visibleRow,
                     Header = header,
                     Value = value,
                     RowNumber = rowNumberText
@@ -259,21 +269,21 @@ public partial class MainWindow : Window
                 : searchHeader == Parser.RowNumberKey
                     ? $"No visible matches found for {searchDescription} in visible row numbers."
                     : $"No visible matches found for {searchDescription} in visible column {searchHeader}.";
-        return;
+            return;
+        }
+
+        ShowFindResultsWindow(searchText, foundInstances);
+
+        var firstMatch = foundInstances[0];
+        ScrollToMatch(firstMatch.Row, firstMatch.Header);
+
+        var foundColumnText = firstMatch.Header == Parser.RowNumberKey
+            ? "row numbers"
+            : firstMatch.Header;
+
+        StatusTextBlock.Text =
+            $"Found {foundInstances.Count:N0} visible instance(s) of {searchDescription}. First match at visible row {firstMatch.RowNumber}, column {foundColumnText}.";
     }
-
-    ShowFindResultsWindow(searchText, foundInstances);
-
-    var firstMatch = foundInstances[0];
-    ScrollToMatch(firstMatch.Row, firstMatch.Header);
-
-    var foundColumnText = firstMatch.Header == Parser.RowNumberKey
-        ? "row numbers"
-        : firstMatch.Header;
-
-    StatusTextBlock.Text =
-        $"Found {foundInstances.Count:N0} visible instance(s) of {searchDescription}. First match at visible row {firstMatch.RowNumber}, column {foundColumnText}.";
-}
 
     /// <summary>
     ///     Handles the filter command by applying or clearing the current grid filter.
@@ -283,7 +293,8 @@ public partial class MainWindow : Window
         switch (arguments.Length)
         {
             case 0:
-                StatusTextBlock.Text = "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, filter word columnName, or filter clear";
+                StatusTextBlock.Text =
+                    "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, filter word columnName, or filter clear";
                 break;
             case 1:
                 // Remove the filter
@@ -314,9 +325,7 @@ public partial class MainWindow : Window
                             if (!row.TryGetValue(matchingHeader, out var value)) continue;
                             if (!string.IsNullOrWhiteSpace(value)
                                 && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase))
-                            {
                                 return true;
-                            }
                         }
 
                         return false;
@@ -331,19 +340,20 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                // Applies a filter to only show matching values. The target can be plain text or /regex/.
+                var matcher = CreateSearchMatcher(arguments[0]);
+
                 _gridView.Filter = item =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
                     if (item is not Dictionary<string, string> row) return false;
+
                     foreach (var header in Parser.Headers)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
                         if (!row.TryGetValue(header, out var value)) continue;
-
-                        if (MatchesSearchTarget(value, arguments[0])) return true;
+                        if (matcher(value)) return true;
                     }
 
                     return false;
@@ -365,6 +375,8 @@ public partial class MainWindow : Window
                     break;
                 }
 
+                var valueMatcher = CreateSearchMatcher(valueSearchTarget);
+
                 _gridView.Filter = item =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -376,7 +388,7 @@ public partial class MainWindow : Window
                         cancellationToken.ThrowIfCancellationRequested();
 
                         if (!row.TryGetValue(header, out var value)) continue;
-                        if (MatchesSearchTarget(value, valueSearchTarget)) return true;
+                        if (valueMatcher(value)) return true;
                     }
 
                     return false;
@@ -393,7 +405,8 @@ public partial class MainWindow : Window
                     : $"Filtered rows where any of {headersToSearch.Count} matched columns match {valueDescription}.";
                 break;
             default:
-                StatusTextBlock.Text = "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, or filter word columnName";
+                StatusTextBlock.Text =
+                    "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, or filter word columnName";
                 break;
         }
     }
@@ -416,10 +429,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                foreach (var columnToHide in columnsToHide)
-                {
-                    columnToHide.IsVisible = false;
-                }
+                foreach (var columnToHide in columnsToHide) columnToHide.IsVisible = false;
 
                 StatusTextBlock.Text = columnsToHide.Count == 1
                     ? $"Hidden column {columnsToHide[0].Header}."
@@ -469,17 +479,14 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                var columnsToUnhide = FindColumnsByNameLetterOrRegex(arguments[0], includeHidden: true);
+                var columnsToUnhide = FindColumnsByNameLetterOrRegex(arguments[0], true);
                 if (columnsToUnhide.Count == 0)
                 {
                     StatusTextBlock.Text = $"Column target not found: {arguments[0]}";
                     break;
                 }
 
-                foreach (var columnToUnhide in columnsToUnhide)
-                {
-                    columnToUnhide.IsVisible = true;
-                }
+                foreach (var columnToUnhide in columnsToUnhide) columnToUnhide.IsVisible = true;
 
                 StatusTextBlock.Text = columnsToUnhide.Count == 1
                     ? $"Unhidden column {columnsToUnhide[0].Header}."
@@ -527,15 +534,22 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Shows an argument example for a recognized command without changing the user's input.
     /// </summary>
-    private void CommandTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void CommandTextBox_TextChanged(object? sender, TextChangedEventArgs e)
     {
-        var commandText = CommandTextBox.Text ?? string.Empty;
-        var command = commandText.TrimStart()
-            .Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault();
+        if (!Configuration.ShowCommandExamples)
+        {
+            CommandExampleTextBlock.Text = string.Empty;
+            return;
+        }
 
-        CommandExampleTextBlock.Text = command is not null
-                                       && CommandExamples.TryGetValue(command, out var example)
+        var commandText = CommandTextBox.Text ?? string.Empty;
+        var trimmedCommandText = commandText.TrimStart();
+        var separatorIndex = trimmedCommandText.IndexOf(' ');
+        var command = separatorIndex < 0
+            ? trimmedCommandText
+            : trimmedCommandText[..separatorIndex];
+
+        CommandExampleTextBlock.Text = command.Length > 0 && CommandExamples.TryGetValue(command, out var example)
             ? example
             : string.Empty;
     }
@@ -568,7 +582,7 @@ public partial class MainWindow : Window
                 [
                     new FilePickerFileType("CSV files")
                     {
-                        Patterns = ["*.csv", "*.gz"]
+                        Patterns = GetCsvFilePatterns()
                     }
                 ]
             });
@@ -580,7 +594,7 @@ public partial class MainWindow : Window
             _currentFilePath = files[0].Path.LocalPath;
             _currentFileName = files[0].Name;
             MainWindowElement.Title = $"CSVoom - {_currentFileName}";
-            _gridView.Filter = null;
+            _gridView.Filter = null!;
             _visibleRows.Clear();
             _columnsByName.Clear();
             _columnsByLetter.Clear();
@@ -617,7 +631,7 @@ public partial class MainWindow : Window
                 _columnsByLetter[columnLetter] = column;
             }
 
-            await LoadRangeIntoViewAsync(1, AutoVisibleRows, cancellationToken);
+            await LoadRangeIntoViewAsync(1, Configuration.AutoVisibleRows, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -675,7 +689,7 @@ public partial class MainWindow : Window
         _findResultsWindow = new Window
         {
             Title = $"Find results for \"{searchText}\"",
-            Width = 700,
+            Width = 500,
             Height = 500,
             Content = resultsListBox
         };
@@ -715,7 +729,7 @@ public partial class MainWindow : Window
 
         if (column is null || !column.IsVisible) return;
 
-        if (row is not null && _visibleRows.Contains(row))
+        if (row is not null && VisibleRowsContainsReference(row))
         {
             CsvDataGrid.SelectedItem = row;
             CsvDataGrid.ScrollIntoView(row, column);
@@ -726,6 +740,15 @@ public partial class MainWindow : Window
         }
 
         CsvDataGrid.Focus();
+    }
+
+    private bool VisibleRowsContainsReference(Dictionary<string, string> row)
+    {
+        foreach (var visibleRow in _visibleRows)
+            if (ReferenceEquals(visibleRow, row))
+                return true;
+
+        return false;
     }
 
     /// <summary>
@@ -753,7 +776,7 @@ public partial class MainWindow : Window
 
             ReplaceVisibleRows(rows);
 
-            if (!rows.Any())
+            if (rows.Count == 0)
             {
                 StatusTextBlock.Text = $"No rows found in range {startRow:N0} {endRow:N0}.";
                 return;
@@ -763,7 +786,9 @@ public partial class MainWindow : Window
         }
         finally
         {
-            CsvDataGrid.FrozenColumnCount = CsvDataGrid.Columns.Count > 0 ? 1 : 0;
+            CsvDataGrid.FrozenColumnCount = CsvDataGrid.Columns.Count > 0
+                ? 1
+                : 0;
         }
     }
 
@@ -804,7 +829,7 @@ public partial class MainWindow : Window
 
         return letter;
     }
-    
+
     /// <summary>
     ///     Finds a data grid column by its display name or spreadsheet-style column letter.
     /// </summary>
@@ -842,40 +867,41 @@ public partial class MainWindow : Window
 
         var matchingColumns = new List<DataGridColumn>();
 
-        foreach (var column in CsvDataGrid.Columns)
+        for (var columnIndex = 0; columnIndex < CsvDataGrid.Columns.Count; columnIndex++)
         {
+            var column = CsvDataGrid.Columns[columnIndex];
+
             if (!includeHidden && !column.IsVisible) continue;
 
-            var columnIndex = CsvDataGrid.Columns.IndexOf(column);
             var dataHeader = columnIndex == 0
                 ? Parser.RowNumberKey
                 : Parser.Headers[ToDataColumnIndex(columnIndex)];
 
             var displayHeader = column.Header?.ToString() ?? string.Empty;
 
-            if (regex.IsMatch(dataHeader) || regex.IsMatch(displayHeader))
-            {
-                matchingColumns.Add(column);
-            }
+            if (regex.IsMatch(dataHeader) || regex.IsMatch(displayHeader)) matchingColumns.Add(column);
         }
 
         return matchingColumns;
     }
 
-/// <summary>
-///     Finds parser headers by exact column name, spreadsheet-style letter, or a slash-delimited regex.
-/// </summary>
-private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
-{
-    return FindColumnsByNameLetterOrRegex(searchValue, includeHidden: true)
-            .Select(column =>
-            {
-                var columnIndex = CsvDataGrid.Columns.IndexOf(column);
-                return columnIndex == 0
-                    ? Parser.RowNumberKey
-                    : Parser.Headers[ToDataColumnIndex(columnIndex)];
-            })
-            .ToList();
+    /// <summary>
+    ///     Finds parser headers by exact column name, spreadsheet-style letter, or a slash-delimited regex.
+    /// </summary>
+    private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
+    {
+        var columns = FindColumnsByNameLetterOrRegex(searchValue, true);
+        var headers = new List<string>(columns.Count);
+
+        foreach (var column in columns)
+        {
+            var columnIndex = CsvDataGrid.Columns.IndexOf(column);
+            headers.Add(columnIndex == 0
+                ? Parser.RowNumberKey
+                : Parser.Headers[ToDataColumnIndex(columnIndex)]);
+        }
+
+        return headers;
     }
 
     /// <summary>
@@ -883,15 +909,18 @@ private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
     /// </summary>
     private IReadOnlyList<string> FindVisibleHeadersByNameLetterOrRegex(string searchValue)
     {
-        return FindColumnsByNameLetterOrRegex(searchValue)
-            .Select(column =>
-            {
-                var columnIndex = CsvDataGrid.Columns.IndexOf(column);
-                return columnIndex == 0
-                    ? Parser.RowNumberKey
-                    : Parser.Headers[ToDataColumnIndex(columnIndex)];
-            })
-            .ToList();
+        var columns = FindColumnsByNameLetterOrRegex(searchValue);
+        var headers = new List<string>(columns.Count);
+
+        foreach (var column in columns)
+        {
+            var columnIndex = CsvDataGrid.Columns.IndexOf(column);
+            headers.Add(columnIndex == 0
+                ? Parser.RowNumberKey
+                : Parser.Headers[ToDataColumnIndex(columnIndex)]);
+        }
+
+        return headers;
     }
 
     /// <summary>
@@ -901,19 +930,20 @@ private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
     {
         regex = null!;
 
-        if (searchValue.Length < 2 || searchValue[0] != '/' || searchValue[^1] != '/')
-        {
-            return false;
-        }
+        if (searchValue.Length < 2 || searchValue[0] != '/' || searchValue[^1] != '/' || !Configuration.RegexSearch) return false;
 
         var pattern = searchValue[1..^1];
+        var regexOptions = RegexOptions.CultureInvariant;
+
+        if (Configuration.CaseInsensitiveSearch)
+            regexOptions |= RegexOptions.IgnoreCase;
 
         try
         {
             regex = new Regex(
                 pattern,
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
-                TimeSpan.FromMilliseconds(250));
+                regexOptions,
+                TimeSpan.FromMilliseconds(Configuration.RegexTimeoutMilliseconds));
 
             return true;
         }
@@ -925,16 +955,16 @@ private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
     }
 
     /// <summary>
-    ///     Searches for a data grid column by its display name or spreadsheet-style column letter. <br/>
+    ///     Searches for a data grid column by its display name or spreadsheet-style column letter. <br />
     ///     Derives from FindColumnByNameOrLetter.
     /// </summary>
-     /// <param name="searchValue">Value to search by</param>
-     /// <returns></returns>
-     private int FindColumnIndexByNameOrLetter(string searchValue)
-     {
-         var column = FindColumnByNameOrLetter(searchValue);
-         return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
-     }
+    /// <param name="searchValue">Value to search by</param>
+    /// <returns></returns>
+    private int FindColumnIndexByNameOrLetter(string searchValue)
+    {
+        var column = FindColumnByNameOrLetter(searchValue);
+        return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
+    }
 
     /// <summary>
     ///     Converts a grid column index to the corresponding parser data column index.
@@ -944,6 +974,31 @@ private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
     private int ToDataColumnIndex(int gridColumnIndex)
     {
         return gridColumnIndex - RowNumberColumnOffset;
+    }
+
+    private static bool IsRegexTarget(string searchValue)
+    {
+        return searchValue is ['/', _, ..] && searchValue[^1] == '/';
+    }
+
+    /// <summary>
+    ///     Creates a reusable matcher for plain text or slash-delimited regex command targets.
+    /// </summary>
+    private Func<string, bool> CreateSearchMatcher(string searchTarget)
+    {
+        return TryCreateRegexTarget(searchTarget, out var regex)
+            ? regex.IsMatch
+            : value => value.Contains(
+                searchTarget,
+                Configuration.CaseInsensitiveSearch
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal);
+    }
+
+    private static IReadOnlyList<string> GetCsvFilePatterns()
+    {
+        return Configuration.CsvFilePatterns
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     private sealed class FindResult
@@ -959,22 +1014,4 @@ private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
             return $"Row {RowNumber}, Column {columnText}: {Value}";
         }
     }
-
-private static bool IsRegexTarget(string searchValue)
-{
-    return searchValue.Length >= 2 && searchValue[0] == '/' && searchValue[^1] == '/';
-}
-
-/// <summary>
-///     Matches a cell value against either plain text or a slash-delimited regex target.
-/// </summary>
-private bool MatchesSearchTarget(string value, string searchTarget)
-{
-    if (!TryCreateRegexTarget(searchTarget, out var regex))
-    {
-        return value.Contains(searchTarget, StringComparison.OrdinalIgnoreCase);
-    }
-
-    return regex.IsMatch(value);
-}
 }
