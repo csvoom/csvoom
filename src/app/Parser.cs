@@ -128,9 +128,12 @@ public class Parser
     public async Task<ObservableCollection<Dictionary<string, string>>> ReadMatchingRowsAsync(
         string filePath,
         Func<Dictionary<string, string>, bool> predicate,
+        int maxRows,
         CancellationToken cancellationToken = default)
     {
         var rows = new ObservableCollection<Dictionary<string, string>>();
+
+        if (maxRows <= 0) return rows;
 
         await EnsureHeadersLoadedAsync(filePath, cancellationToken);
 
@@ -151,9 +154,57 @@ public class Parser
             if (!predicate(row)) continue;
 
             rows.Add(row);
+
+            if (rows.Count >= maxRows) break;
         }
 
         return rows;
+    }
+
+    /// <summary>
+    ///     Finds matching cells throughout the entire CSV file, capped at the requested maximum number of matches.
+    /// </summary>
+    public async Task<IReadOnlyList<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>>
+        FindMatchesAsync(
+            string filePath,
+            Func<string, bool> matcher,
+            IReadOnlyList<string> headersToSearch,
+            int maxMatches,
+            CancellationToken cancellationToken = default)
+    {
+        var matches = new List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>();
+
+        if (maxMatches <= 0 || headersToSearch.Count == 0) return matches;
+
+        await EnsureHeadersLoadedAsync(filePath, cancellationToken);
+
+        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
+
+        if (!await enumerator.MoveNextAsync()) return matches;
+
+        var currentRowNumber = 1;
+
+        var headerRow = new Dictionary<string, string>
+        {
+            [RowNumberKey] = currentRowNumber.ToString()
+        };
+
+        foreach (var header in Headers) headerRow[header] = header;
+
+        AddMatchingCells(headerRow, headersToSearch, matcher, currentRowNumber, matches, maxMatches);
+
+        while (matches.Count < maxMatches && await enumerator.MoveNextAsync())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            currentRowNumber++;
+
+            var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
+
+            AddMatchingCells(row, headersToSearch, matcher, currentRowNumber, matches, maxMatches);
+        }
+
+        return matches;
     }
 
     /// <summary>
@@ -273,6 +324,28 @@ public class Parser
         }
 
         return null;
+    }
+
+    /// <summary>
+    ///     Adds matching cells from a row until either the row is exhausted or the maximum match count is reached.
+    /// </summary>
+    private static void AddMatchingCells(
+        Dictionary<string, string> row,
+        IReadOnlyList<string> headersToSearch,
+        Func<string, bool> matcher,
+        int currentRowNumber,
+        ICollection<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)> matches,
+        int maxMatches)
+    {
+        foreach (var header in headersToSearch)
+        {
+            if (matches.Count >= maxMatches) return;
+
+            if (!row.TryGetValue(header, out var value)) continue;
+            if (!matcher(value)) continue;
+
+            matches.Add((row, header, value, currentRowNumber));
+        }
     }
 
     // Builder methods

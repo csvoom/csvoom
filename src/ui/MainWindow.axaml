@@ -7,6 +7,11 @@
         Name="MainWindowElement"
         Title="CSVoom">
     <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Menu Grid.Row="0">
+            <MenuItem Header="Open file" Name="OpenButton" Click="OpenButton_Click"/>
+            <MenuItem Header="Command History"/>
+            <MenuItem Header="Settings" Click="SettingsButton_Click"/>
+        </Menu>
         <StackPanel
             Grid.Row="0"
             Margin="8,8,8,8"
@@ -28,7 +33,6 @@
                 MinWidth="320"
                 MinimumPrefixLength="0" />
             <Button Content="Run" Click="RunCommandButton_Click" Name="RunButton" />
-            <Button Content="Open CSV" Click="OpenCsvButton_Click" Name="OpenCsvButton" />
         </StackPanel>
         <DataGrid
             Grid.Row="2"

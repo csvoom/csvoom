@@ -71,6 +71,108 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <summary>
+    ///     Opens the settings editor and saves changed configuration values to the app configuration file.
+    /// </summary>
+    private async void SettingsButton_Click(object? sender, RoutedEventArgs e)
+    {
+        var editedValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var settingsPanel = new StackPanel
+        {
+            Margin = new Thickness(12),
+            Spacing = 12
+        };
+
+        foreach (var setting in Configuration.Settings)
+        {
+            var currentValue = Configuration.GetRawValue(setting.Key);
+
+            settingsPanel.Children.Add(new TextBlock
+            {
+                Text = $"{setting.Key} ({setting.Type})",
+                FontWeight = Avalonia.Media.FontWeight.Bold
+            });
+
+            settingsPanel.Children.Add(new TextBlock
+            {
+                Text = setting.Description,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                Opacity = 0.7
+            });
+
+            if (setting.Type.Equals("Boolean", StringComparison.OrdinalIgnoreCase))
+            {
+                var checkBox = new CheckBox
+                {
+                    IsChecked = bool.TryParse(currentValue, out var boolValue) && boolValue,
+                    Content = setting.Key
+                };
+
+                checkBox.PropertyChanged += (_, args) =>
+                {
+                    if (args.Property.Name == nameof(CheckBox.IsChecked))
+                        editedValues[setting.Key] = (checkBox.IsChecked == true).ToString();
+                };
+
+                editedValues[setting.Key] = (checkBox.IsChecked == true).ToString();
+                settingsPanel.Children.Add(checkBox);
+            }
+            else
+            {
+                var textBox = new TextBox
+                {
+                    Text = currentValue,
+                    Watermark = setting.DefaultValue
+                };
+
+                textBox.TextChanged += (_, _) =>
+                {
+                    editedValues[setting.Key] = textBox.Text ?? string.Empty;
+                };
+
+                editedValues[setting.Key] = textBox.Text ?? string.Empty;
+                settingsPanel.Children.Add(textBox);
+            }
+        }
+
+        var settingsWindow = new Window
+        {
+            Title = "Settings",
+            Width = 560,
+            Height = 640,
+            Content = new ScrollViewer
+            {
+                Content = settingsPanel
+            }
+        };
+
+        settingsWindow.Closing += (_, _) =>
+        {
+            Configuration.Save(editedValues);
+            ApplyConfigurationToUi();
+            StatusTextBlock.Text = "Settings saved.";
+        };
+
+        await settingsWindow.ShowDialog(this);
+    }
+
+    /// <summary>
+    ///     Applies configuration values that affect the already-created main window controls.
+    /// </summary>
+    private void ApplyConfigurationToUi()
+    {
+        CommandTextBox.ItemsSource = Configuration.MaxCommandHistoryItems > 0
+            ? CommandSuggestions.Take(Configuration.MaxCommandHistoryItems).ToArray()
+            : null;
+
+        CommandExampleTextBlock.IsVisible = Configuration.ShowCommandExamples;
+
+        if (!Configuration.ShowCommandExamples)
+            CommandExampleTextBlock.Text = string.Empty;
+        else
+            CommandTextBox_TextChanged(CommandTextBox, new TextChangedEventArgs(TextBox.TextChangedEvent));
+    }
+
     // Commands
 
     /// <summary>
@@ -101,7 +203,7 @@ public partial class MainWindow : Window
 
             if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
             {
-                Command_Find(arguments, cancellationToken);
+                await Command_FindAsync(arguments, cancellationToken);
                 return;
             }
 
@@ -156,7 +258,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                await LoadRangeIntoViewAsync(startRow, startRow + Configuration.AutoVisibleRows, cancellationToken);
+                await LoadRangeIntoViewAsync(startRow, startRow + Configuration.AutoLoadRows, cancellationToken);
                 break;
             case 2: // Load between arguments [0] and [1]
                 if (!int.TryParse(arguments[0], out startRow) || !int.TryParse(arguments[1], out var endRow) ||
@@ -175,10 +277,12 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    ///     Handles the find command by locating all matching visible cells and showing them in a popup window.
+    ///     Handles the find command by locating all matching cells in the current file and showing them in a popup window.
     /// </summary>
-    private void Command_Find(string[] arguments, CancellationToken cancellationToken)
+    private async Task Command_FindAsync(string[] arguments, CancellationToken cancellationToken)
     {
+        if (_currentFilePath is null) return;
+
         string searchText;
         string? searchHeader = null;
         IReadOnlyList<string>? explicitHeadersToSearch = null;
@@ -196,7 +300,7 @@ public partial class MainWindow : Window
                 searchText = arguments[0];
                 var columnSearchValue = arguments[1];
 
-                explicitHeadersToSearch = FindVisibleHeadersByNameLetterOrRegex(columnSearchValue);
+                explicitHeadersToSearch = FindHeadersByNameLetterOrRegex(columnSearchValue);
                 if (explicitHeadersToSearch.Count == 0)
                 {
                     StatusTextBlock.Text = $"Column target not found: {columnSearchValue}";
@@ -214,63 +318,58 @@ public partial class MainWindow : Window
         var searchDescription = IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
 
         StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-            ? $"Searching visible cells for {searchDescription}..."
+            ? $"Searching file for {searchDescription}..."
             : searchHeader == Parser.RowNumberKey
-                ? $"Searching visible row numbers for {searchDescription}..."
-                : $"Searching visible column {searchHeader} for {searchDescription}...";
+                ? $"Searching file row numbers for {searchDescription}..."
+                : $"Searching file column {searchHeader} for {searchDescription}...";
 
-        var visibleHeadersToSearch = new List<string>();
+        var headersToSearch = new List<string>();
 
         if (explicitHeadersToSearch is not null)
-            visibleHeadersToSearch.AddRange(explicitHeadersToSearch);
+            headersToSearch.AddRange(explicitHeadersToSearch);
         else
-            for (var columnIndex = 0; columnIndex < CsvDataGrid.Columns.Count; columnIndex++)
-            {
-                var column = CsvDataGrid.Columns[columnIndex];
-                if (!column.IsVisible) continue;
+        {
+            headersToSearch.Add(Parser.RowNumberKey);
+            headersToSearch.AddRange(Parser.Headers);
+        }
 
-                visibleHeadersToSearch.Add(columnIndex == 0
-                    ? Parser.RowNumberKey
-                    : Parser.Headers[ToDataColumnIndex(columnIndex)]);
-            }
-
-        var foundInstances = new List<FindResult>();
         var searchMatcher = CreateSearchMatcher(searchText);
 
-        foreach (var row in _gridView)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+        var parserMatches = await Parser.FindMatchesAsync(
+            _currentFilePath,
+            searchMatcher,
+            headersToSearch,
+            Configuration.AutoFindRows,
+            cancellationToken);
 
-            if (row is not Dictionary<string, string> visibleRow) continue;
+        cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var header in visibleHeadersToSearch)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (!visibleRow.TryGetValue(header, out var value)) continue;
-                if (!searchMatcher(value)) continue;
-
-                var rowNumberText = visibleRow.GetValueOrDefault(Parser.RowNumberKey, "?");
-
-                foundInstances.Add(new FindResult
-                {
-                    Row = visibleRow,
-                    Header = header,
-                    Value = value,
-                    RowNumber = rowNumberText
-                });
-            }
-        }
-
-        if (foundInstances.Count == 0)
+        if (parserMatches.Count == 0)
         {
             StatusTextBlock.Text = string.IsNullOrWhiteSpace(searchHeader)
-                ? $"No visible matches found for {searchDescription}."
+                ? $"No matches found for {searchDescription}."
                 : searchHeader == Parser.RowNumberKey
-                    ? $"No visible matches found for {searchDescription} in visible row numbers."
-                    : $"No visible matches found for {searchDescription} in visible column {searchHeader}.";
+                    ? $"No matches found for {searchDescription} in row numbers."
+                    : $"No matches found for {searchDescription} in column {searchHeader}.";
             return;
         }
+
+        var rowsToShow = parserMatches
+            .Select(match => match.Row)
+            .Distinct<Dictionary<string, string>>(ReferenceEqualityComparer.Instance)
+            .ToArray();
+
+        ReplaceVisibleRows(rowsToShow);
+
+        var foundInstances = parserMatches
+            .Select(match => new FindResult
+            {
+                Row = match.Row,
+                Header = match.Header,
+                Value = match.Value,
+                RowNumber = match.RowNumber.ToString()
+            })
+            .ToArray();
 
         ShowFindResultsWindow(searchText, foundInstances);
 
@@ -281,8 +380,12 @@ public partial class MainWindow : Window
             ? "row numbers"
             : firstMatch.Header;
 
+        var capText = parserMatches.Count >= Configuration.AutoFindRows
+            ? $" Showing first {Configuration.AutoFindRows:N0} match(es)."
+            : string.Empty;
+
         StatusTextBlock.Text =
-            $"Found {foundInstances.Count:N0} visible instance(s) of {searchDescription}. First match at visible row {firstMatch.RowNumber}, column {foundColumnText}.";
+            $"Found {foundInstances.Length:N0} instance(s) of {searchDescription}. First match at row {firstMatch.RowNumber}, column {foundColumnText}.{capText}";
     }
 
     /// <summary>
@@ -557,7 +660,7 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Opens a file picker, loads the selected CSV or GZIP file, and initializes the data grid columns.
     /// </summary>
-    private async void OpenCsvButton_Click(object? sender, RoutedEventArgs e)
+    private async void OpenButton_Click(object? sender, RoutedEventArgs e)
     {
         var topLevel = GetTopLevel(this);
         if (topLevel is null || _isBusy)
@@ -631,7 +734,7 @@ public partial class MainWindow : Window
                 _columnsByLetter[columnLetter] = column;
             }
 
-            await LoadRangeIntoViewAsync(1, Configuration.AutoVisibleRows, cancellationToken);
+            await LoadRangeIntoViewAsync(1, Configuration.AutoLoadRows, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -799,7 +902,7 @@ public partial class MainWindow : Window
     private void SetIsBusy(bool toStatus)
     {
         RunButton.Content = toStatus ? "Cancel" : "Run";
-        OpenCsvButton.IsEnabled = !toStatus;
+        OpenButton.IsEnabled = !toStatus;
         _isBusy = toStatus;
     }
 
@@ -1012,6 +1115,22 @@ public partial class MainWindow : Window
         {
             var columnText = Header == Parser.RowNumberKey ? "row numbers" : Header;
             return $"Row {RowNumber}, Column {columnText}: {Value}";
+        }
+
+        private sealed class ReferenceEqualityComparer<T> : IEqualityComparer<T>
+            where T : class
+        {
+            public static ReferenceEqualityComparer<T> Instance { get; } = new();
+
+            public bool Equals(T? x, T? y)
+            {
+                return ReferenceEquals(x, y);
+            }
+
+            public int GetHashCode(T obj)
+            {
+                return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+            }
         }
     }
 }
