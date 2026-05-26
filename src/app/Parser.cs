@@ -143,10 +143,8 @@ public class Parser
 
         var currentRowNumber = 1;
 
-        while (await enumerator.MoveNextAsync())
+        while (await enumerator.MoveNextAsync() && cancellationToken.IsCancellationRequested)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
             currentRowNumber++;
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
@@ -182,7 +180,7 @@ public class Parser
 
         if (!await enumerator.MoveNextAsync()) return matches;
 
-        var currentRowNumber = 1;l
+        var currentRowNumber = 1;
 
         var headerRow = new Dictionary<string, string>
         {
