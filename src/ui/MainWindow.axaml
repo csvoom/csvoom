@@ -8,9 +8,9 @@
         Title="CSVoom">
     <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Menu Grid.Row="0">
-            <MenuItem Header="Open file" Name="OpenButton" Click="OpenButton_Click"/>
-            <MenuItem Header="Command History"/>
-            <MenuItem Header="Settings" Click="SettingsButton_Click"/>
+            <MenuItem Header="Open file" Name="OpenButton" Click="OpenButton_Click" />
+            <MenuItem Header="Command History" />
+            <MenuItem Header="Settings" Click="SettingsButton_Click" />
         </Menu>
         <StackPanel
             Grid.Row="0"

@@ -117,8 +117,8 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 filePath,
                 row => row.TryGetValue("city", out var city)
                        && city.Equals("London", StringComparison.OrdinalIgnoreCase),
-                       100,
-                cancellationToken: CancellationToken.None);
+                100,
+                CancellationToken.None);
 
             Assert.Equal(2, rows.Count);
             Assert.Equal("Alice", rows[0]["name"]);

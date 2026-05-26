@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,7 @@ using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using CSVoom.app;
 
@@ -90,13 +92,13 @@ public partial class MainWindow : Window
             settingsPanel.Children.Add(new TextBlock
             {
                 Text = $"{setting.Key} ({setting.Type})",
-                FontWeight = Avalonia.Media.FontWeight.Bold
+                FontWeight = FontWeight.Bold
             });
 
             settingsPanel.Children.Add(new TextBlock
             {
                 Text = setting.Description,
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                TextWrapping = TextWrapping.Wrap,
                 Opacity = 0.7
             });
 
@@ -125,10 +127,7 @@ public partial class MainWindow : Window
                     Watermark = setting.DefaultValue
                 };
 
-                textBox.TextChanged += (_, _) =>
-                {
-                    editedValues[setting.Key] = textBox.Text ?? string.Empty;
-                };
+                textBox.TextChanged += (_, _) => { editedValues[setting.Key] = textBox.Text ?? string.Empty; };
 
                 editedValues[setting.Key] = textBox.Text ?? string.Empty;
                 settingsPanel.Children.Add(textBox);
@@ -326,7 +325,9 @@ public partial class MainWindow : Window
         var headersToSearch = new List<string>();
 
         if (explicitHeadersToSearch is not null)
+        {
             headersToSearch.AddRange(explicitHeadersToSearch);
+        }
         else
         {
             headersToSearch.Add(Parser.RowNumberKey);
@@ -1033,7 +1034,8 @@ public partial class MainWindow : Window
     {
         regex = null!;
 
-        if (searchValue.Length < 2 || searchValue[0] != '/' || searchValue[^1] != '/' || !Configuration.RegexSearch) return false;
+        if (searchValue.Length < 2 || searchValue[0] != '/' || searchValue[^1] != '/' ||
+            !Configuration.RegexSearch) return false;
 
         var pattern = searchValue[1..^1];
         var regexOptions = RegexOptions.CultureInvariant;
@@ -1129,7 +1131,7 @@ public partial class MainWindow : Window
 
             public int GetHashCode(T obj)
             {
-                return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+                return RuntimeHelpers.GetHashCode(obj);
             }
         }
     }

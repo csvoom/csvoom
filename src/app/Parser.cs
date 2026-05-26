@@ -182,7 +182,7 @@ public class Parser
 
         if (!await enumerator.MoveNextAsync()) return matches;
 
-        var currentRowNumber = 1;
+        var currentRowNumber = 1;l
 
         var headerRow = new Dictionary<string, string>
         {
@@ -293,6 +293,7 @@ public class Parser
 
             if (match is not null) return match;
         }
+
         return null;
     }
 
