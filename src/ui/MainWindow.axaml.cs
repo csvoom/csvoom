@@ -2,11 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -45,13 +43,13 @@ public partial class MainWindow : Window
 
     private readonly Dictionary<string, DataGridColumn> _columnsByLetter = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DataGridColumn> _columnsByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _editedSettings = new(StringComparer.OrdinalIgnoreCase);
     private readonly DataGridCollectionView _gridView;
     private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = new();
     private CancellationTokenSource? _commandCancellationTokenSource;
 
     private string? _currentFileName;
     private string? _currentFilePath;
-    private Window? _findResultsWindow;
     private bool _isBusy;
 
     /// <summary>
@@ -71,31 +69,48 @@ public partial class MainWindow : Window
             CancelCurrentOperation();
             CloseFindResultsWindow();
         };
+
+        FindResultsListBox.SelectionChanged += (_, _) =>
+        {
+            if (FindResultsListBox.SelectedItem is not FindResult selectedResult) return;
+
+            ScrollToMatch(selectedResult.Row, selectedResult.Header);
+
+            var foundColumnText = selectedResult.Header == Parser.RowNumberKey
+                ? "row numbers"
+                : selectedResult.Header;
+
+            StatusTextBlock.Text =
+                $"Selected at visible row {selectedResult.RowNumber}, column {foundColumnText}.";
+        };
     }
 
     /// <summary>
-    ///     Opens the settings editor and saves changed configuration values to the app configuration file.
+    ///     Toggles the inline settings panel.
     /// </summary>
-    private async void SettingsButton_Click(object? sender, RoutedEventArgs e)
+    private void SettingsButton_Click(object? sender, RoutedEventArgs e)
     {
-        var editedValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var settingsPanel = new StackPanel
+        if (SettingsPanel.IsVisible)
         {
-            Margin = new Thickness(12),
-            Spacing = 12
-        };
+            CloseInlinePanel();
+            return;
+        }
+
+        ShowInlinePanel(SettingsPanel);
+        _editedSettings.Clear();
+        SettingsFieldsContainer.Children.Clear();
 
         foreach (var setting in Configuration.Settings)
         {
             var currentValue = Configuration.GetRawValue(setting.Key);
 
-            settingsPanel.Children.Add(new TextBlock
+            SettingsFieldsContainer.Children.Add(new TextBlock
             {
                 Text = $"{setting.Key} ({setting.Type})",
                 FontWeight = FontWeight.Bold
             });
 
-            settingsPanel.Children.Add(new TextBlock
+            SettingsFieldsContainer.Children.Add(new TextBlock
             {
                 Text = setting.Description,
                 TextWrapping = TextWrapping.Wrap,
@@ -110,14 +125,13 @@ public partial class MainWindow : Window
                     Content = setting.Key
                 };
 
-                checkBox.PropertyChanged += (_, args) =>
+                checkBox.IsCheckedChanged += (_, _) =>
                 {
-                    if (args.Property.Name == nameof(CheckBox.IsChecked))
-                        editedValues[setting.Key] = (checkBox.IsChecked == true).ToString();
+                    _editedSettings[setting.Key] = (checkBox.IsChecked == true).ToString();
                 };
 
-                editedValues[setting.Key] = (checkBox.IsChecked == true).ToString();
-                settingsPanel.Children.Add(checkBox);
+                _editedSettings[setting.Key] = (checkBox.IsChecked == true).ToString();
+                SettingsFieldsContainer.Children.Add(checkBox);
             }
             else
             {
@@ -127,32 +141,51 @@ public partial class MainWindow : Window
                     PlaceholderText = setting.DefaultValue
                 };
 
-                textBox.TextChanged += (_, _) => { editedValues[setting.Key] = textBox.Text ?? string.Empty; };
+                textBox.TextChanged += (_, _) => { _editedSettings[setting.Key] = textBox.Text ?? string.Empty; };
 
-                editedValues[setting.Key] = textBox.Text ?? string.Empty;
-                settingsPanel.Children.Add(textBox);
+                _editedSettings[setting.Key] = textBox.Text ?? string.Empty;
+                SettingsFieldsContainer.Children.Add(textBox);
             }
         }
+    }
 
-        var settingsWindow = new Window
+    private void SaveSettings_Click(object? sender, RoutedEventArgs e)
+    {
+        Configuration.Save(_editedSettings);
+        ApplyConfigurationToUi();
+        StatusTextBlock.Text = "Settings saved.";
+        CloseInlinePanel();
+    }
+
+    private void FindButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (FindPanel.IsVisible)
         {
-            Title = "Settings",
-            Width = 560,
-            Height = 640,
-            Content = new ScrollViewer
-            {
-                Content = settingsPanel
-            }
-        };
+            CloseInlinePanel();
+            return;
+        }
 
-        settingsWindow.Closing += (_, _) =>
-        {
-            Configuration.Save(editedValues);
-            ApplyConfigurationToUi();
-            StatusTextBlock.Text = "Settings saved.";
-        };
+        ShowInlinePanel(FindPanel);
+    }
 
-        await settingsWindow.ShowDialog(this);
+
+    private void CloseInlinePanel_Click(object? sender, RoutedEventArgs e)
+    {
+        CloseInlinePanel();
+    }
+
+    private void ShowInlinePanel(Control panel)
+    {
+        InlinePanelContainer.IsVisible = true;
+        SettingsPanel.IsVisible = panel == SettingsPanel;
+        FindPanel.IsVisible = panel == FindPanel;
+    }
+
+    private void CloseInlinePanel()
+    {
+        InlinePanelContainer.IsVisible = false;
+        SettingsPanel.IsVisible = false;
+        FindPanel.IsVisible = false;
     }
 
     /// <summary>
@@ -179,7 +212,8 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task ExecuteCommandAsync(string commandText)
     {
-        if (string.IsNullOrWhiteSpace(commandText) || CsvDataGrid.Columns.Count == 0 || _isBusy || _currentFilePath == null) return;
+        if (string.IsNullOrWhiteSpace(commandText) || CsvDataGrid.Columns.Count == 0 || _isBusy ||
+            _currentFilePath == null) return;
 
         CloseFindResultsWindow();
         SetIsBusy(true);
@@ -290,12 +324,12 @@ public partial class MainWindow : Window
         // Argument 1: Required
         var searchText = arguments[0];
         var searchDescription = IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
-        
+
         // Argument 2: Optional
         var columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
         var searchHeaders = columnSearchValue is null ? null : FindHeadersByNameLetterOrRegex(columnSearchValue);
         var searchHeader = columnSearchValue is null ? null : searchHeaders?.FirstOrDefault();
-        
+
         if (columnSearchValue is not null && searchHeader is null)
         {
             StatusTextBlock.Text = $"No matching column found for {columnSearchValue}";
@@ -310,61 +344,61 @@ public partial class MainWindow : Window
 
         var searchMatcher = CreateSearchMatcher(searchText);
 
-        var parserMatches = await Parser.FindMatchesAsync(
-            _currentFilePath,
-            searchMatcher,
-            searchHeaders,
-            Configuration.AutoFindRows,
-            cancellationToken);
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (parserMatches.Count == 0)
+        if (_currentFilePath != null)
         {
-            StatusTextBlock.Text = searchHeader is null
-                ? $"No matches found for {searchDescription}."
-                : searchHeader == Parser.RowNumberKey
-                    ? $"No matches found for {searchDescription} in row numbers."
-                    : $"No matches found for {searchDescription} in column {searchHeader}.";
-            return;
-        }
+            var parserMatches = await Parser.FindMatchesAsync(
+                _currentFilePath,
+                searchMatcher,
+                searchHeaders,
+                Configuration.AutoFindRows,
+                cancellationToken);
 
-        var rowsToShow = parserMatches
-            .Where(match => match.RowNumber > 1)
-            .Select(match => match.Row)
-            .Distinct<Dictionary<string, string>>(ReferenceEqualityComparer.Instance)
-            .ToArray();
+            cancellationToken.ThrowIfCancellationRequested();
 
-        if (rowsToShow.Length > 0)
-        {
-            ReplaceVisibleRows(rowsToShow);
-        }
-
-        var foundInstances = parserMatches
-            .Select(match => new FindResult
+            if (parserMatches.Count == 0)
             {
-                Row = match.RowNumber == 1 ? null : match.Row,
-                Header = match.Header,
-                Value = match.Value,
-                RowNumber = match.RowNumber.ToString()
-            })
-            .ToArray();
+                StatusTextBlock.Text = searchHeader is null
+                    ? $"No matches found for {searchDescription}."
+                    : searchHeader == Parser.RowNumberKey
+                        ? $"No matches found for {searchDescription} in row numbers."
+                        : $"No matches found for {searchDescription} in column {searchHeader}.";
+                return;
+            }
 
-        //ShowFindResultsWindow(searchText, foundInstances);
+            var rowsToShow = parserMatches
+                .Where(match => match.RowNumber > 1)
+                .Select(match => match.Row)
+                .Distinct<Dictionary<string, string>>(ReferenceEqualityComparer.Instance)
+                .ToArray();
 
-        var firstMatch = foundInstances[0];
-        ScrollToMatch(firstMatch.Row, firstMatch.Header);
+            if (rowsToShow.Length > 0) ReplaceVisibleRows(rowsToShow);
 
-        var foundColumnText = firstMatch.Header == Parser.RowNumberKey
-            ? "row numbers"
-            : firstMatch.Header;
+            var foundInstances = parserMatches
+                .Select(match => new FindResult
+                {
+                    Row = match.RowNumber == 1 ? null : match.Row,
+                    Header = match.Header,
+                    Value = match.Value,
+                    RowNumber = match.RowNumber.ToString()
+                })
+                .ToArray();
 
-        var capText = parserMatches.Count >= Configuration.AutoFindRows
-            ? $" Showing first {Configuration.AutoFindRows:N0} match(es)."
-            : string.Empty;
+            ShowFindResultsWindow(foundInstances);
 
-        StatusTextBlock.Text =
-            $"Found {foundInstances.Length:N0} instance(s) of {searchDescription}. First match at row {firstMatch.RowNumber}, column {foundColumnText}.{capText}";
+            var firstMatch = foundInstances[0];
+            ScrollToMatch(firstMatch.Row, firstMatch.Header);
+
+            var foundColumnText = firstMatch.Header == Parser.RowNumberKey
+                ? "row numbers"
+                : firstMatch.Header;
+
+            var capText = parserMatches.Count >= Configuration.AutoFindRows
+                ? $" Showing first {Configuration.AutoFindRows:N0} match(es)."
+                : string.Empty;
+
+            StatusTextBlock.Text =
+                $"Found {foundInstances.Length:N0} instance(s) of {searchDescription}. First match at row {firstMatch.RowNumber}, column {foundColumnText}.{capText}";
+        }
     }
 
     /// <summary>
@@ -498,17 +532,19 @@ public partial class MainWindow : Window
     /// </summary>
     private void Command_Hide(string[] arguments)
     {
-        const string errorMessage = "Error hiding columns. Please check your input and try again.\nUsage: \"hide a b\" or \"hide columnName1 columnName2\"";
+        const string errorMessage =
+            "Error hiding columns. Please check your input and try again.\nUsage: \"hide a b\" or \"hide columnName1 columnName2\"";
         if (arguments.Length is < 1 or > 2)
         {
             StatusTextBlock.Text = errorMessage;
             return;
         }
+
         try
         {
             var startIndex = FindColumnIndexByNameOrLetter(arguments[0]);
             var endIndex = arguments.Length == 2 ? FindColumnIndexByNameOrLetter(arguments[1]) : startIndex;
-            
+
             if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
             for (var i = startIndex; i <= endIndex; i++) CsvDataGrid.Columns[i].IsVisible = false;
             StatusTextBlock.Text =
@@ -517,9 +553,9 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             StatusTextBlock.Text = errorMessage;
-            #if DEBUG
+#if DEBUG
             Console.WriteLine($"Error hiding columns: {ex.Message}");
-            #endif
+#endif
         }
     }
 
@@ -722,42 +758,13 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    ///     Shows all visible find results in a popup window. Selecting a result scrolls the main grid to that cell.
+    ///     Shows all visible find results in the inline find panel. Selecting a result scrolls the main grid to that cell.
     /// </summary>
-    private void ShowFindResultsWindow(string searchText, IReadOnlyList<FindResult> foundInstances)
+    private void ShowFindResultsWindow(IReadOnlyList<FindResult> foundInstances)
     {
-        CloseFindResultsWindow();
-
-        var resultsListBox = new ListBox
-        {
-            ItemsSource = foundInstances,
-            Margin = new Thickness(8)
-        };
-
-        resultsListBox.SelectionChanged += (_, _) =>
-        {
-            if (resultsListBox.SelectedItem is not FindResult selectedResult) return;
-
-            ScrollToMatch(selectedResult.Row, selectedResult.Header);
-
-            var foundColumnText = selectedResult.Header == Parser.RowNumberKey
-                ? "row numbers"
-                : selectedResult.Header;
-
-            StatusTextBlock.Text =
-                $"Selected \"{searchText}\" at visible row {selectedResult.RowNumber}, column {foundColumnText}.";
-        };
-
-        _findResultsWindow = new Window
-        {
-            Title = $"Find results for \"{searchText}\"",
-            Width = 500,
-            Height = 500,
-            Content = resultsListBox
-        };
-
-        _findResultsWindow.Closed += (_, _) => _findResultsWindow = null;
-        _findResultsWindow.Show(this);
+        ShowInlinePanel(FindPanel);
+        FindResultsListBox.ItemsSource = foundInstances;
+        FindResultsListBox.Focus();
     }
 
     /// <summary>
@@ -765,11 +772,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void CloseFindResultsWindow()
     {
-        if (_findResultsWindow is null) return;
-
-        var window = _findResultsWindow;
-        _findResultsWindow = null;
-        window.Close();
+        CloseInlinePanel();
     }
 
     /// <summary>
@@ -898,7 +901,9 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(searchValue)) return null;
 
         var normalizedSearchValue = searchValue.Trim();
-        return _columnsByName.TryGetValue(normalizedSearchValue, out var columnByName) ? columnByName : _columnsByLetter.GetValueOrDefault(normalizedSearchValue);
+        return _columnsByName.TryGetValue(normalizedSearchValue, out var columnByName)
+            ? columnByName
+            : _columnsByLetter.GetValueOrDefault(normalizedSearchValue);
     }
 
     /// <summary>
@@ -947,21 +952,6 @@ public partial class MainWindow : Window
     private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
     {
         var columns = FindColumnsByNameLetterOrRegex(searchValue, true);
-        var headers = new List<string>(columns.Count);
-        headers.AddRange(columns.Select(column => CsvDataGrid.Columns.IndexOf(column))
-            .Select(columnIndex => columnIndex == 0
-                ? Parser.RowNumberKey
-                : Parser.Headers[ToDataColumnIndex(columnIndex)]));
-
-        return headers;
-    }
-
-    /// <summary>
-    ///     Finds visible parser headers by exact column name, spreadsheet-style letter, or a slash-delimited regex.
-    /// </summary>
-    private IReadOnlyList<string> FindVisibleHeadersByNameLetterOrRegex(string searchValue)
-    {
-        var columns = FindColumnsByNameLetterOrRegex(searchValue);
         var headers = new List<string>(columns.Count);
         headers.AddRange(columns.Select(column => CsvDataGrid.Columns.IndexOf(column))
             .Select(columnIndex => columnIndex == 0
@@ -1052,7 +1042,7 @@ public partial class MainWindow : Window
 
     private sealed class FindResult
     {
-        public required Dictionary<string, string> Row { get; init; }
+        public required Dictionary<string, string>? Row { get; init; }
         public required string Header { get; init; }
         public required string Value { get; init; }
         public required string RowNumber { get; init; }
@@ -1061,22 +1051,6 @@ public partial class MainWindow : Window
         {
             var columnText = Header == Parser.RowNumberKey ? "row numbers" : Header;
             return $"Row {RowNumber}, Column {columnText}: {Value}";
-        }
-
-        private sealed class ReferenceEqualityComparer<T> : IEqualityComparer<T>
-            where T : class
-        {
-            public static ReferenceEqualityComparer<T> Instance { get; } = new();
-
-            public bool Equals(T? x, T? y)
-            {
-                return ReferenceEquals(x, y);
-            }
-
-            public int GetHashCode(T obj)
-            {
-                return RuntimeHelpers.GetHashCode(obj);
-            }
         }
     }
 }

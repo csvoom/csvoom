@@ -171,7 +171,8 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             ]);
 
             // Search for "name" which is in the header
-            var matches = await _parser.FindMatchesAsync(filePath, s => s.Contains("name", StringComparison.OrdinalIgnoreCase), null, 100);
+            var matches = await _parser.FindMatchesAsync(filePath,
+                s => s.Contains("name", StringComparison.OrdinalIgnoreCase), null, 100);
 
             Assert.NotEmpty(matches);
             var headerMatch = matches.FirstOrDefault(m => m.RowNumber == 1);

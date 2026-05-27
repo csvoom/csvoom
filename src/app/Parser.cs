@@ -226,7 +226,7 @@ public class Parser
     /// <summary>
     ///     Finds the next occurrence of the specified text after the supplied row and header.
     /// </summary>
-    public async Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindNextAsync(
+    private async Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindNextAsync(
         string filePath,
         string searchText,
         string? searchHeader = null,
@@ -312,20 +312,17 @@ public class Parser
         int startAfterRowNumber,
         int startAfterHeaderIndex)
     {
-        if (currentRowNumber < startAfterRowNumber) return null;
-
         var firstHeaderIndex = currentRowNumber == startAfterRowNumber
             ? startAfterHeaderIndex + 1
             : 0;
-
+        if (currentRowNumber <= startAfterRowNumber) return null;
         for (var headerIndex = firstHeaderIndex; headerIndex < headersToSearch.Count; headerIndex++)
         {
             var header = headersToSearch[headerIndex];
 
             if (!row.TryGetValue(header, out var value)) continue;
 
-            if (value.Contains(searchText, StringComparison.OrdinalIgnoreCase))
-                return (row, header, currentRowNumber);
+            if (value.Contains(searchText, StringComparison.OrdinalIgnoreCase)) return (row, header, currentRowNumber);
         }
 
         return null;
@@ -345,15 +342,11 @@ public class Parser
         foreach (var header in headersToSearch)
         {
             if (matches.Count >= maxMatches) return;
-
             if (!row.TryGetValue(header, out var value)) continue;
             if (!matcher(value)) continue;
-
             matches.Add((row, header, value, currentRowNumber));
         }
     }
-
-    // Builder methods
 
     /// <summary>
     ///     Loads headers from the file if they have not already been read.
@@ -395,26 +388,22 @@ public class Parser
         {
             var c = line[i];
 
-            if (c == '"')
+            switch (c)
             {
-                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
-                {
+                case '"' when inQuotes && i + 1 < line.Length && line[i + 1] == '"':
                     current.Append('"');
                     i++;
-                }
-                else
-                {
+                    break;
+                case '"':
                     inQuotes = !inQuotes;
-                }
-            }
-            else if (c == ',' && !inQuotes)
-            {
-                fields.Add(current.ToString());
-                current.Clear();
-            }
-            else
-            {
-                current.Append(c);
+                    break;
+                case ',' when !inQuotes:
+                    fields.Add(current.ToString());
+                    current.Clear();
+                    break;
+                default:
+                    current.Append(c);
+                    break;
             }
         }
 

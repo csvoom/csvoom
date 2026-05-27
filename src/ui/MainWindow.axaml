@@ -6,9 +6,10 @@
         x:Class="CSVoom.MainWindow"
         Name="MainWindowElement"
         Title="CSVoom">
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
         <Menu Grid.Row="0">
             <MenuItem Header="Open file" Name="OpenButton" Click="OpenButton_Click" />
+            <MenuItem Header="Find" Name="FindButton" Click="FindButton_Click" />
             <MenuItem Header="Command History" />
             <MenuItem Header="Settings" Click="SettingsButton_Click" />
         </Menu>
@@ -34,8 +35,38 @@
                 MinimumPrefixLength="0" />
             <Button Content="Run" Click="RunCommandButton_Click" Name="RunButton" />
         </StackPanel>
+
+        <!-- Inline Panels -->
+        <Border Grid.Row="2"
+                x:Name="InlinePanelContainer"
+                IsVisible="False"
+                BorderBrush="Gray"
+                BorderThickness="0,0,0,1"
+                Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+            <Grid Margin="8">
+                <!-- Settings Panel -->
+                <StackPanel x:Name="SettingsPanel" IsVisible="False" Spacing="8">
+                    <DockPanel>
+                        <TextBlock Text="Settings" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
+                        <Button Content="Close" Click="CloseInlinePanel_Click" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <ScrollViewer MaxHeight="400">
+                        <StackPanel x:Name="SettingsFieldsContainer" Spacing="8" />
+                    </ScrollViewer>
+                    <Button Content="Save &amp; Apply" Click="SaveSettings_Click" HorizontalAlignment="Right"
+                            Margin="0,8,0,0" />
+                </StackPanel>
+
+                <!-- Find Panel -->
+                <StackPanel x:Name="FindPanel" IsVisible="False" Spacing="8">
+                    <TextBlock Text="Find history"/>
+                    <ListBox x:Name="FindResultsListBox" Height="200" Margin="0,8,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <DataGrid
-            Grid.Row="2"
+            Grid.Row="3"
             x:Name="CsvDataGrid"
             CanUserSortColumns="False"
             AutoGenerateColumns="False"
@@ -43,7 +74,7 @@
             GridLinesVisibility="All"
             HeadersVisibility="All" />
         <StackPanel
-            Grid.Row="3"
+            Grid.Row="4"
             Orientation="Horizontal">
             <TextBlock
                 Margin="8,8,8,8"
