@@ -143,8 +143,11 @@ public class Parser
 
         var currentRowNumber = 1;
 
-        while (await enumerator.MoveNextAsync() && cancellationToken.IsCancellationRequested)
+        while (await enumerator.MoveNextAsync())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (rows.Count >= maxRows) break;
+
             currentRowNumber++;
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
@@ -166,15 +169,18 @@ public class Parser
         FindMatchesAsync(
             string filePath,
             Func<string, bool> matcher,
-            IReadOnlyList<string> headersToSearch,
+            IReadOnlyList<string>? headersToSearch,
             int maxMatches,
             CancellationToken cancellationToken = default)
     {
         var matches = new List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>();
 
-        if (maxMatches <= 0 || headersToSearch.Count == 0) return matches;
+        if (maxMatches <= 0) return matches;
 
         await EnsureHeadersLoadedAsync(filePath, cancellationToken);
+
+        var headers = headersToSearch ?? Headers.Prepend(RowNumberKey).ToArray();
+        if (headers.Count == 0) return matches;
 
         await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
 
@@ -189,7 +195,7 @@ public class Parser
 
         foreach (var header in Headers) headerRow[header] = header;
 
-        AddMatchingCells(headerRow, headersToSearch, matcher, currentRowNumber, matches, maxMatches);
+        AddMatchingCells(headerRow, headers, matcher, currentRowNumber, matches, maxMatches);
 
         while (matches.Count < maxMatches && await enumerator.MoveNextAsync())
         {
@@ -199,7 +205,7 @@ public class Parser
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
 
-            AddMatchingCells(row, headersToSearch, matcher, currentRowNumber, matches, maxMatches);
+            AddMatchingCells(row, headers, matcher, currentRowNumber, matches, maxMatches);
         }
 
         return matches;

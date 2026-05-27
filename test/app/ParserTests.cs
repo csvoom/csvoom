@@ -97,6 +97,95 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    public async Task TestFindFirstInHeader()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris"
+            ]);
+
+            // Search for "name" which is in the header
+            var match = await _parser.FindFirstAsync(filePath, "name");
+
+            Assert.NotNull(match);
+            Assert.Equal(1, match.Value.RowNumber);
+            Assert.Equal("name", match.Value.Header);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public async Task TestFindFirstInHeaderWithSpecificColumn()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris"
+            ]);
+
+            // Search for "name" in column "name" - should find it in the header
+            var match = await _parser.FindFirstAsync(filePath, "name", "name");
+
+            Assert.NotNull(match);
+            Assert.Equal(1, match.Value.RowNumber);
+            Assert.Equal("name", match.Value.Header);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public async Task TestFindMatchesInHeader()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris"
+            ]);
+
+            // Search for "name" which is in the header
+            var matches = await _parser.FindMatchesAsync(filePath, s => s.Contains("name", StringComparison.OrdinalIgnoreCase), null, 100);
+
+            Assert.NotEmpty(matches);
+            var headerMatch = matches.FirstOrDefault(m => m.RowNumber == 1);
+            Assert.NotEqual(default, headerMatch);
+            Assert.Equal("name", headerMatch.Header);
+            Assert.Equal("name", headerMatch.Value);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
+
+    [Fact]
     public async Task TestReadMatchingRows()
     {
         var filePath = Path.GetTempFileName();
@@ -123,6 +212,65 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             Assert.Equal(2, rows.Count);
             Assert.Equal("Alice", rows[0]["name"]);
             Assert.Equal("Charlie", rows[1]["name"]);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public async Task TestReadMatchingRowsIncludesHeader()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris"
+            ]);
+
+            var rows = await _parser.ReadMatchingRowsAsync(
+                filePath,
+                row => row.TryGetValue("name", out var name)
+                       && name.Equals("name", StringComparison.OrdinalIgnoreCase),
+                100,
+                CancellationToken.None);
+
+            Assert.Empty(rows);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public async Task TestReadRangeIncludesHeader()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris"
+            ]);
+
+            var rows = await _parser.ReadRangeAsync(filePath, 1, 2);
+
+            Assert.Single(rows);
+            Assert.Equal("2", rows[0][Parser.RowNumberKey]);
+            Assert.Equal("Alice", rows[0]["name"]);
         }
         finally
         {
