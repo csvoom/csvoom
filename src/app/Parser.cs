@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Runtime.CompilerServices;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -91,15 +92,6 @@ public class Parser
 
         return row;
     }
-    private static void AddMatchingCells(Dictionary<string, string> row, IReadOnlyList<string> headersToSearch, Func<string, bool> matcher, int currentRowNumber, ICollection<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)> matches, int maxMatches)
-    {
-        foreach (var header in headersToSearch)
-        {
-            if (matches.Count >= maxMatches) return;
-            if (!row.TryGetValue(header, out var value) || !matcher(value)) continue;
-            matches.Add((row, header, value, currentRowNumber));
-        }
-    }
     
     /// <summary>
     ///     Reads the first row of the file and stores it as the parser's header collection.
@@ -119,16 +111,15 @@ public class Parser
         }
     }
     
-    public async Task<ObservableCollection<Dictionary<string, string>>> ReadRangeAsync(string filePath, int startRow, int endRow, CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<Dictionary<string, string>> ReadRangeAsyncEnumerable(string filePath, int startRow, int endRow, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
         // Variables
         var currentRowNumber = 1;
-        var rows = new ObservableCollection<Dictionary<string, string>>();
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
         
         // Exception prevention
-        if (startRow <= 0 || endRow < startRow || !await enumerator.MoveNextAsync()) return rows;
+        if (startRow <= 0 || endRow < startRow || !await enumerator.MoveNextAsync()) yield break;
 
         // Processing
         while (await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
@@ -136,34 +127,58 @@ public class Parser
             currentRowNumber++;
             if (currentRowNumber < startRow) continue;
             if (currentRowNumber > endRow) break;
-            rows.Add(BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber));
+            yield return BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
+        }
+    }
+
+    public async Task<ObservableCollection<Dictionary<string, string>>> ReadRangeAsync(string filePath, int startRow, int endRow, CancellationToken cancellationToken = default)
+    {
+        var rows = new ObservableCollection<Dictionary<string, string>>();
+        await foreach (var row in ReadRangeAsyncEnumerable(filePath, startRow, endRow, cancellationToken))
+        {
+            rows.Add(row);
         }
         return rows;
     }
-    public async Task<IReadOnlyList<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>> ReadMatchesAsync(string filePath, Func<string, bool> matcher, IReadOnlyList<string>? headersToSearch, int maxMatches, CancellationToken cancellationToken = default, IProgress<int>? progress = null)
+
+    public async IAsyncEnumerable<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)> ReadMatchesAsyncEnumerable(string filePath, Func<string, bool> matcher, IReadOnlyList<string>? headersToSearch, int maxMatches, [EnumeratorCancellation] CancellationToken cancellationToken = default, IProgress<int>? progress = null)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
         // Variables
         var headers = headersToSearch ?? Headers.Prepend(RowNumberKey).ToArray();
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
         var currentRowNumber = 1;
-        var matches = new List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>();
-        var headerRow = new Dictionary<string, string> { [RowNumberKey] = "1" };
+        var matchCount = 0;
         
         // Exception prevention
-        if (!headers.Any()) return matches;
+        if (!headers.Any()) yield break;
         
         // Processing
-        foreach (var header in headers) headerRow[header] = header;
-        AddMatchingCells(headerRow, headers, matcher, currentRowNumber, matches, maxMatches);
-        progress?.Report(matches.Count);
-        while (matches.Count < maxMatches && await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
+        if (!await enumerator.MoveNextAsync()) yield break;
+
+        while (matchCount < maxMatches && await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
         {
             currentRowNumber++;
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
-            var previousMatchCount = matches.Count;
-            AddMatchingCells(row, headers, matcher, currentRowNumber, matches, maxMatches);
-            if (matches.Count > previousMatchCount) progress?.Report(matches.Count);
+            var foundInThisRow = false;
+            foreach (var header in headers)
+            {
+                if (matchCount >= maxMatches) break;
+                if (!row.TryGetValue(header, out var value) || !matcher(value)) continue;
+                matchCount++;
+                foundInThisRow = true;
+                yield return (row, header, value, currentRowNumber);
+            }
+            if (foundInThisRow) progress?.Report(matchCount);
+        }
+    }
+
+    public async Task<IReadOnlyList<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>> ReadMatchesAsync(string filePath, Func<string, bool> matcher, IReadOnlyList<string>? headersToSearch, int maxMatches, CancellationToken cancellationToken = default, IProgress<int>? progress = null)
+    {
+        var matches = new List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>();
+        await foreach (var match in ReadMatchesAsyncEnumerable(filePath, matcher, headersToSearch, maxMatches, cancellationToken, progress))
+        {
+            matches.Add(match);
         }
         return matches;
     }

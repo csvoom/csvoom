@@ -48,7 +48,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task TestFindMatchesInHeader()
+    public async Task TestFindMatchesDoesNotIncludeHeader()
     {
         var filePath = Path.GetTempFileName();
         File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
@@ -67,11 +67,8 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var matches = await _parser.ReadMatchesAsync(filePath,
                 s => s.Contains("name", StringComparison.OrdinalIgnoreCase), null, 100);
 
-            Assert.NotEmpty(matches);
-            var headerMatch = matches.FirstOrDefault(m => m.RowNumber == 1);
-            Assert.NotEqual(default, headerMatch);
-            Assert.Equal("name", headerMatch.Header);
-            Assert.Equal("name", headerMatch.Value);
+            // Should be empty because it no longer searches headers
+            Assert.Empty(matches);
         }
         finally
         {

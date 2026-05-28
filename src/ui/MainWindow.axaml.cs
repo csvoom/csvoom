@@ -24,7 +24,7 @@ public partial class MainWindow : Window
     [
         "load ",
         "find ",
-        "filter ",
+        "focus",
         "hide ",
         "unhide all"
     ];
@@ -34,7 +34,7 @@ public partial class MainWindow : Window
         {
             ["load"] = "Arguments: start(int) / start(int) end(int)",
             ["find"] = "Arguments: word / /regex/ / word columnName / /columnRegex/",
-            ["filter"] = "Arguments: word / /regex/ / columnName / /columnRegex/ / 'clear'",
+            ["focus"] = "Arguments: word / /regex/ / columnName / /columnRegex/ / 'clear'",
             ["hide"] = "Arguments: letter / columnName / /columnRegex/",
             ["unhide"] = "Arguments: all / letter / columnName / /columnRegex/"
         };
@@ -67,7 +67,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             CancelCurrentOperation();
-            CloseFindResultsWindow();
+            CloseInlinePanel();
         };
 
         FindResultsListBox.SelectionChanged += (_, _) =>
@@ -215,7 +215,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(commandText) || CsvDataGrid.Columns.Count == 0 || _isBusy ||
             _currentFilePath == null) return;
 
-        CloseFindResultsWindow();
+        CloseInlinePanel();
         SetIsBusy(true);
 
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -245,9 +245,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (command.Equals("filter", StringComparison.OrdinalIgnoreCase))
+            if (command.Equals("focus", StringComparison.OrdinalIgnoreCase))
             {
-                Command_Filter(arguments, cancellationToken);
+                Command_Focus(arguments, cancellationToken);
                 return;
             }
 
@@ -321,14 +321,12 @@ public partial class MainWindow : Window
     private async Task Command_FindAsync(string[] arguments, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
-        // Argument 1: Required
         var searchText = arguments[0];
         var searchDescription = IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
-
-        // Argument 2: Optional
+        
         var columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
         var searchHeaders = columnSearchValue is null ? null : FindHeadersByNameLetterOrRegex(columnSearchValue);
-        var searchHeader = columnSearchValue is null ? null : searchHeaders?.FirstOrDefault();
+        var searchHeader = columnSearchValue is null ? null : searchHeaders?[0];
 
         if (columnSearchValue is not null && searchHeader is null)
         {
@@ -353,85 +351,86 @@ public partial class MainWindow : Window
                 StatusTextBlock.Text = $"{searchBaseText} Found {count:N0} match(es) so far.";
             });
 
-            var parserMatches = await Parser.ReadMatchesAsync(
+            _visibleRows.Clear();
+            var foundResults = new ObservableCollection<FindResult>();
+            var rowsToShow = new HashSet<Dictionary<string, string>>(ReferenceEqualityComparer.Instance);
+            
+            ShowInlinePanel(FindPanel);
+            FindResultsListBox.ItemsSource = foundResults;
+
+            await foreach (var match in Parser.ReadMatchesAsyncEnumerable(
                 _currentFilePath,
                 searchMatcher,
                 searchHeaders,
                 Configuration.AutoFindRows,
                 cancellationToken,
-                progress);
-
-            if (parserMatches.Count == 0)
+                progress))
             {
-                StatusTextBlock.Text = searchHeader is null
-                    ? $"No matches found for {searchDescription}."
-                    : searchHeader == Parser.RowNumberKey
-                        ? $"No matches found for {searchDescription} in row numbers."
-                        : $"No matches found for {searchDescription} in column {searchHeader}.";
-                return;
-            }
-
-            var rowsToShow = parserMatches
-                .Where(match => match.RowNumber > 1)
-                .Select(match => match.Row)
-                .Distinct<Dictionary<string, string>>(ReferenceEqualityComparer.Instance)
-                .ToArray();
-
-            if (rowsToShow.Length > 0) ReplaceVisibleRows(rowsToShow);
-
-            var foundInstances = parserMatches
-                .Select(match => new FindResult
+                var result = new FindResult
                 {
-                    Row = match.RowNumber == 1 ? null : match.Row,
+                    Row = match.Row,
                     Header = match.Header,
                     Value = match.Value,
                     RowNumber = match.RowNumber.ToString()
-                })
-                .ToArray();
+                };
+                foundResults.Add(result);
 
-            ShowFindResultsWindow(foundInstances);
+                if (rowsToShow.Add(match.Row))
+                {
+                    _visibleRows.Add(match.Row);
+                }
 
-            var firstMatch = foundInstances[0];
-            ScrollToMatch(firstMatch.Row, firstMatch.Header);
+                if (foundResults.Count % 10 == 0)
+                {
+                    _gridView.Refresh();
+                }
+            }
+            _gridView.Refresh();
 
-            var foundColumnText = firstMatch.Header == Parser.RowNumberKey
-                ? "row numbers"
-                : firstMatch.Header;
-
-            var capText = parserMatches.Count >= Configuration.AutoFindRows
-                ? $" Showing first {Configuration.AutoFindRows:N0} match(es)."
-                : string.Empty;
-
+            if (foundResults.Count == 0)
+            {
+                CloseInlinePanel();
+                StatusTextBlock.Text = searchHeader switch
+                {
+                    null => $"No matches found for {searchDescription}.",
+                    Parser.RowNumberKey => $"No matches found for {searchDescription} in row numbers.",
+                    _ => $"No matches found for {searchDescription} in column {searchHeader}."
+                };
+                return;
+            }
+            
             StatusTextBlock.Text =
-                $"Found {foundInstances.Length:N0} instance(s) of {searchDescription}. First match at row {firstMatch.RowNumber}, column {foundColumnText}.{capText}";
+                $"Found {foundResults.Count:N0} instance(s) of {searchDescription}.";
         }
+        CsvDataGrid.Focus();
     }
 
     /// <summary>
-    ///     Handles the filter command by applying or clearing the current grid filter.
+    ///     Handles the focus command by applying or clearing the current grid filter.
     /// </summary>
-    private void Command_Filter(string[] arguments, CancellationToken cancellationToken)
+    private void Command_Focus(string[] arguments, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
         switch (arguments.Length)
         {
             case 0:
                 StatusTextBlock.Text =
-                    "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, filter word columnName, or filter clear";
+                    "Usage: focus word, focus /regex/, focus columnName, focus /columnRegex/, focus word columnName, or focus clear";
                 break;
             case 1:
                 
-                // Remove the filter
+                // Remove the focus
                 if (arguments[0].Equals("clear", StringComparison.OrdinalIgnoreCase))
                 {
                     _gridView.Filter = null!;
                     _gridView.Refresh();
                     FilterTextBlock.Text = "";
-                    StatusTextBlock.Text = "Filter cleared.";
+                    StatusTextBlock.Text = "Focus cleared.";
+                    CsvDataGrid.Focus();
                     break;
                 }
                 
-                // Filter header of empty value
+                // Focus header of empty value
                 var matchingHeaders = FindHeadersByNameLetterOrRegex(arguments[0]);
                 if (matchingHeaders.Count > 0)
                 {
@@ -450,12 +449,17 @@ public partial class MainWindow : Window
                     };
                     _gridView.Refresh();
                     FilterTextBlock.Text = matchingHeaders.Count == 1
-                        ? $"Filtered rows where column \"{matchingHeaders[0]}\" is not empty and not \\N."
-                        : $"Filtered rows where any of {matchingHeaders.Count} matched columns are not empty and not \\N.";
+                        ? $"Focused rows where column \"{matchingHeaders[0]}\" is not empty and not \\N."
+                        : $"Focused rows where any of {matchingHeaders.Count} matched columns are not empty and not \\N.";
+
+                    if (matchingHeaders.Count > 0)
+                    {
+                        ScrollToMatch(null, matchingHeaders[0], arguments[0]);
+                    }
                     break;
                 }
                 
-                // Filter rows by defined value
+                // Focus rows by defined value
                 if (cancellationToken.IsCancellationRequested) return;
                 var matcher = CreateSearchMatcher(arguments[0]);
                 _gridView.Filter = item =>
@@ -471,8 +475,8 @@ public partial class MainWindow : Window
                 _gridView.Refresh();
 
                 FilterTextBlock.Text = IsRegexTarget(arguments[0])
-                    ? $"Filtered rows matching regex {arguments[0]}."
-                    : $"Filtered rows containing \"{arguments[0]}\".";
+                    ? $"Focused rows matching regex {arguments[0]}."
+                    : $"Focused rows containing \"{arguments[0]}\".";
                 break;
             case 2:
                 if (cancellationToken.IsCancellationRequested) return;
@@ -504,12 +508,17 @@ public partial class MainWindow : Window
                     ? $"regex {valueSearchTarget}"
                     : $"\"{valueSearchTarget}\"";
                 FilterTextBlock.Text = headersToSearch.Count == 1
-                    ? $"Filtered rows where column \"{headersToSearch[0]}\" matches {valueDescription}."
-                    : $"Filtered rows where any of {headersToSearch.Count} matched columns match {valueDescription}.";
+                    ? $"Focused rows where column \"{headersToSearch[0]}\" matches {valueDescription}."
+                    : $"Focused rows where any of {headersToSearch.Count} matched columns match {valueDescription}.";
+
+                if (headersToSearch.Count > 0)
+                {
+                    ScrollToMatch(null, headersToSearch[0], columnSearchTarget);
+                }
                 break;
             default:
                 StatusTextBlock.Text =
-                    "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, or filter word columnName";
+                    "Usage: focus word, focus /regex/, focus columnName, focus /columnRegex/, or focus word columnName";
                 break;
         }
     }
@@ -753,24 +762,6 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    ///     Shows all visible find results in the inline find panel. Selecting a result scrolls the main grid to that cell.
-    /// </summary>
-    private void ShowFindResultsWindow(IReadOnlyList<FindResult> foundInstances)
-    {
-        ShowInlinePanel(FindPanel);
-        FindResultsListBox.ItemsSource = foundInstances;
-        FindResultsListBox.Focus();
-    }
-
-    /// <summary>
-    ///     Closes the find results popup if it is currently open.
-    /// </summary>
-    private void CloseFindResultsWindow()
-    {
-        CloseInlinePanel();
-    }
-
-    /// <summary>
     ///     Makes all data grid columns visible.
     /// </summary>
     private void ShowAllColumns()
@@ -781,11 +772,11 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Scrolls the data grid to the supplied row and column, making the column visible first.
     /// </summary>
-    private void ScrollToMatch(Dictionary<string, string>? row, string header)
+    private void ScrollToMatch(Dictionary<string, string>? row, string header, string? columnLetter = null)
     {
         var column = header == Parser.RowNumberKey
             ? CsvDataGrid.Columns[0]
-            : FindColumnByNameOrLetter(header);
+            : columnLetter is not null ? FindColumnByNameOrLetter(columnLetter) : FindColumnByNameOrLetter(header);
 
         if (column is null || !column.IsVisible) return;
 
@@ -798,7 +789,6 @@ public partial class MainWindow : Window
         {
             CsvDataGrid.ScrollIntoView(_visibleRows.FirstOrDefault(), column);
         }
-
         CsvDataGrid.Focus();
     }
 
@@ -826,17 +816,27 @@ public partial class MainWindow : Window
         try
         {
             StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
-            var rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow, cancellationToken);
+            _visibleRows.Clear();
+            var rowCount = 0;
+            await foreach (var row in Parser.ReadRangeAsyncEnumerable(_currentFilePath, startRow, endRow, cancellationToken))
+            {
+                _visibleRows.Add(row);
+                rowCount++;
+                if (rowCount % 100 == 0)
+                {
+                    StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}... Loaded {rowCount:N0} rows.";
+                    _gridView.Refresh();
+                }
+            }
+            _gridView.Refresh();
 
-            ReplaceVisibleRows(rows);
-
-            if (rows.Count == 0)
+            if (rowCount == 0)
             {
                 StatusTextBlock.Text = $"No rows found in range {startRow:N0} {endRow:N0}.";
                 return;
             }
 
-            StatusTextBlock.Text = $"Showing {rows.Count:N0} rows from range {startRow:N0}:{endRow:N0}.";
+            StatusTextBlock.Text = $"Showing {rowCount:N0} rows from range {startRow:N0}:{endRow:N0}.";
         }
         finally
         {
