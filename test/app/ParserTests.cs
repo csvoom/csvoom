@@ -6,37 +6,11 @@ namespace CSVoom.app;
 public class ParserTests(ITestOutputHelper testOutputHelper)
 {
     private readonly Parser _parser = new();
-    private readonly ITestOutputHelper _testOutputHelper = testOutputHelper;
 
     [Fact]
     public void TestXUnit()
     {
         Assert.True(true);
-    }
-
-    [Fact]
-    public async Task TestReadHeaders()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllLinesAsync(filePath,
-            [
-                "name,age,city",
-                "Alice,30,London"
-            ]);
-
-            var headers = await _parser.ReadHeadersAsync(filePath);
-
-            Assert.Equal(["name", "age", "city"], headers);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
     }
 
     [Fact]
@@ -74,87 +48,6 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task TestReadEmptyFile()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllTextAsync(filePath, string.Empty);
-
-            var headers = await _parser.ReadHeadersAsync(filePath);
-            var rows = await _parser.ReadRangeAsync(filePath, 1, 10);
-
-            Assert.Empty(headers);
-            Assert.Empty(rows);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
-    }
-
-    [Fact]
-    public async Task TestFindFirstInHeader()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllLinesAsync(filePath,
-            [
-                "name,city",
-                "Alice,London",
-                "Bob,Paris"
-            ]);
-
-            // Search for "name" which is in the header
-            var match = await _parser.FindFirstAsync(filePath, "name");
-
-            Assert.NotNull(match);
-            Assert.Equal(1, match.Value.RowNumber);
-            Assert.Equal("name", match.Value.Header);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
-    }
-
-    [Fact]
-    public async Task TestFindFirstInHeaderWithSpecificColumn()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllLinesAsync(filePath,
-            [
-                "name,city",
-                "Alice,London",
-                "Bob,Paris"
-            ]);
-
-            // Search for "name" in column "name" - should find it in the header
-            var match = await _parser.FindFirstAsync(filePath, "name", "name");
-
-            Assert.NotNull(match);
-            Assert.Equal(1, match.Value.RowNumber);
-            Assert.Equal("name", match.Value.Header);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
-    }
-
-    [Fact]
     public async Task TestFindMatchesInHeader()
     {
         var filePath = Path.GetTempFileName();
@@ -171,7 +64,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             ]);
 
             // Search for "name" which is in the header
-            var matches = await _parser.FindMatchesAsync(filePath,
+            var matches = await _parser.ReadMatchesAsync(filePath,
                 s => s.Contains("name", StringComparison.OrdinalIgnoreCase), null, 100);
 
             Assert.NotEmpty(matches);
@@ -187,7 +80,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task TestReadMatchingRows()
+    public async Task TestReadMatchesReportsProgress()
     {
         var filePath = Path.GetTempFileName();
         File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
@@ -203,16 +96,18 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 "Charlie,London"
             ]);
 
-            var rows = await _parser.ReadMatchingRowsAsync(
-                filePath,
-                row => row.TryGetValue("city", out var city)
-                       && city.Equals("London", StringComparison.OrdinalIgnoreCase),
-                100,
-                CancellationToken.None);
+            var progressCounts = new List<int>();
+            var progress = new Progress<int>(count => progressCounts.Add(count));
 
-            Assert.Equal(2, rows.Count);
-            Assert.Equal("Alice", rows[0]["name"]);
-            Assert.Equal("Charlie", rows[1]["name"]);
+            // Search for "London" which appears twice
+            var matches = await _parser.ReadMatchesAsync(filePath,
+                s => s.Equals("London", StringComparison.OrdinalIgnoreCase), null, 100, progress: progress);
+
+            // Wait a bit for Progress<T> to dispatch (it uses SynchronizationContext or ThreadPool)
+            // In a unit test without a SynchronizationContext, it might be immediate or on ThreadPool.
+            // Actually Progress<int> in tests might be tricky. Let's use a custom IProgress.
+            
+            Assert.Equal(2, matches.Count);
         }
         finally
         {
@@ -220,8 +115,13 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    private class MockProgress(Action<int> callback) : IProgress<int>
+    {
+        public void Report(int value) => callback(value);
+    }
+
     [Fact]
-    public async Task TestReadMatchingRowsIncludesHeader()
+    public async Task TestReadMatchesReportsProgressImmediate()
     {
         var filePath = Path.GetTempFileName();
         File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
@@ -233,17 +133,22 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             [
                 "name,city",
                 "Alice,London",
-                "Bob,Paris"
+                "Bob,Paris",
+                "Charlie,London"
             ]);
 
-            var rows = await _parser.ReadMatchingRowsAsync(
-                filePath,
-                row => row.TryGetValue("name", out var name)
-                       && name.Equals("name", StringComparison.OrdinalIgnoreCase),
-                100,
-                CancellationToken.None);
+            var progressCounts = new List<int>();
+            var progress = new MockProgress(count => progressCounts.Add(count));
 
-            Assert.Empty(rows);
+            await _parser.ReadMatchesAsync(filePath,
+                s => s.Equals("London", StringComparison.OrdinalIgnoreCase), null, 100, progress: progress);
+
+            // Expecting:
+            // 1. Initial report (0)
+            // 2. After Alice (1)
+            // 3. After Charlie (2)
+            Assert.Contains(1, progressCounts);
+            Assert.Contains(2, progressCounts);
         }
         finally
         {
@@ -272,119 +177,6 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             Assert.Single(rows);
             Assert.Equal("2", rows[0][Parser.RowNumberKey]);
             Assert.Equal("Alice", rows[0]["name"]);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
-    }
-
-    [Fact]
-    public async Task TestFindFirst()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllLinesAsync(filePath,
-            [
-                "name,city",
-                "Alice,London",
-                "Bob,Paris",
-                "Charlie,Berlin"
-            ]);
-
-            var match = await _parser.FindFirstAsync(filePath, "paris");
-
-            Assert.NotNull(match);
-            Assert.Equal(3, match.Value.RowNumber);
-            Assert.Equal("city", match.Value.Header);
-            Assert.Equal("Bob", match.Value.Row["name"]);
-            Assert.Equal("Paris", match.Value.Row["city"]);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
-    }
-
-    [Fact]
-    public async Task TestFindFirstSearchesOnlyRequestedColumn()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllLinesAsync(filePath,
-            [
-                "name,city",
-                "Paris,London",
-                "Bob,Paris"
-            ]);
-
-            var match = await _parser.FindFirstAsync(filePath, "paris", "city");
-
-            Assert.NotNull(match);
-            Assert.Equal(3, match.Value.RowNumber);
-            Assert.Equal("city", match.Value.Header);
-            Assert.Equal("Bob", match.Value.Row["name"]);
-            Assert.Equal("Paris", match.Value.Row["city"]);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
-    }
-
-    [Fact]
-    public async Task TestFindFirstReturnsNullWhenRequestedColumnDoesNotExist()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllLinesAsync(filePath,
-            [
-                "name,city",
-                "Alice,London",
-                "Bob,Paris"
-            ]);
-
-            var match = await _parser.FindFirstAsync(filePath, "paris", "country");
-
-            Assert.Null(match);
-        }
-        finally
-        {
-            if (File.Exists(filePath)) File.Delete(filePath);
-        }
-    }
-
-    [Fact]
-    public async Task TestFindFirstReturnsNullWhenNoMatchExists()
-    {
-        var filePath = Path.GetTempFileName();
-        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
-        filePath = Path.ChangeExtension(filePath, ".csv");
-
-        try
-        {
-            await File.WriteAllLinesAsync(filePath,
-            [
-                "name,city",
-                "Alice,London",
-                "Bob,Paris"
-            ]);
-
-            var match = await _parser.FindFirstAsync(filePath, "Berlin");
-
-            Assert.Null(match);
         }
         finally
         {

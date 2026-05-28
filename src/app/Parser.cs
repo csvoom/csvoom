@@ -16,369 +16,39 @@ public class Parser
 
     public const string RowNumberKey = "__CsvRowNumber";
 
-    public IReadOnlyList<string> Headers { get; private set; } = Array.Empty<string>();
-
-    /// <summary>
-    ///     Asynchronously lists raw lines from a CSV file or decompressed GZIP stream.
-    /// </summary>
-    private async IAsyncEnumerator<string> ParserLineEnumerator(
-        string filePath,
-        CancellationToken cancellationToken = default)
+    public IReadOnlyList<string> Headers { get; private set; } = [];
+    
+    // Constructor methods
+    private static StreamReader BuildReader(string filePath)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
+        if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("File path cannot be null or whitespace", nameof(filePath));
+        
+        var reader = File.OpenRead(filePath);
+        if (filePath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return new StreamReader(reader);
+        }
+        if (filePath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+        {
+            return new StreamReader(new GZipStream(reader, CompressionMode.Decompress));
+        }
+        throw new ArgumentException($"Unsupported file format: {Path.GetExtension(filePath)}");
+    }
+    private static async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
+    {
         if (!File.Exists(filePath))
         {
             Console.WriteLine("File not found: " + filePath);
             yield break;
         }
 
-        var ext = Path.GetExtension(filePath);
-
-        if (ext.Equals(".gz", StringComparison.OrdinalIgnoreCase))
+        using var reader = BuildReader(filePath);
+        while (await reader.ReadLineAsync(cancel) is { } line)
         {
-            await using var fileStream = File.OpenRead(filePath);
-            await using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
-            using var reader = new StreamReader(gzipStream);
-
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                yield return line;
-            }
-
-            yield break;
-        }
-
-        if (ext.Equals(".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            using var reader = File.OpenText(filePath);
-
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                yield return line;
-            }
-
-            yield break;
-        }
-
-        Console.WriteLine("Unsupported file format: " + filePath);
-    }
-
-    // Parser methods
-
-    /// <summary>
-    ///     Reads the first row of the file and stores it as the parser's header collection.
-    /// </summary>
-    public async Task<IReadOnlyList<string>> ReadHeadersAsync(
-        string filePath,
-        CancellationToken cancellationToken = default)
-    {
-        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
-
-        if (await enumerator.MoveNextAsync())
-            Headers = ParseCsvLine(enumerator.Current);
-        else
-            Headers = Array.Empty<string>();
-
-        return Headers;
-    }
-
-    /// <summary>
-    ///     Reads a bounded range of CSV rows and converts them into dictionaries keyed by the header name.
-    /// </summary>
-    public async Task<ObservableCollection<Dictionary<string, string>>> ReadRangeAsync(
-        string filePath,
-        int startRow,
-        int endRow,
-        CancellationToken cancellationToken = default)
-    {
-        var rows = new ObservableCollection<Dictionary<string, string>>();
-
-        if (startRow <= 0 || endRow < startRow) return rows;
-
-        await EnsureHeadersLoadedAsync(filePath, cancellationToken);
-
-        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
-
-        if (!await enumerator.MoveNextAsync()) return rows;
-
-        var currentRowNumber = 1;
-
-        while (await enumerator.MoveNextAsync())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            currentRowNumber++;
-
-            if (currentRowNumber < startRow) continue;
-
-            if (currentRowNumber > endRow) break;
-
-            rows.Add(BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber));
-        }
-
-        return rows;
-    }
-
-    /// <summary>
-    ///     Reads rows that satisfy the supplied predicate, up to the requested maximum number of rows.
-    /// </summary>
-    public async Task<ObservableCollection<Dictionary<string, string>>> ReadMatchingRowsAsync(
-        string filePath,
-        Func<Dictionary<string, string>, bool> predicate,
-        int maxRows,
-        CancellationToken cancellationToken = default)
-    {
-        var rows = new ObservableCollection<Dictionary<string, string>>();
-
-        if (maxRows <= 0) return rows;
-
-        await EnsureHeadersLoadedAsync(filePath, cancellationToken);
-
-        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
-
-        if (!await enumerator.MoveNextAsync()) return rows;
-
-        var currentRowNumber = 1;
-
-        while (await enumerator.MoveNextAsync())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (rows.Count >= maxRows) break;
-
-            currentRowNumber++;
-
-            var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
-
-            if (!predicate(row)) continue;
-
-            rows.Add(row);
-
-            if (rows.Count >= maxRows) break;
-        }
-
-        return rows;
-    }
-
-    /// <summary>
-    ///     Finds matching cells throughout the entire CSV file, capped at the requested maximum number of matches.
-    /// </summary>
-    public async Task<IReadOnlyList<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>>
-        FindMatchesAsync(
-            string filePath,
-            Func<string, bool> matcher,
-            IReadOnlyList<string>? headersToSearch,
-            int maxMatches,
-            CancellationToken cancellationToken = default)
-    {
-        var matches = new List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>();
-
-        if (maxMatches <= 0) return matches;
-
-        await EnsureHeadersLoadedAsync(filePath, cancellationToken);
-
-        var headers = headersToSearch ?? Headers.Prepend(RowNumberKey).ToArray();
-        if (headers.Count == 0) return matches;
-
-        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
-
-        if (!await enumerator.MoveNextAsync()) return matches;
-
-        var currentRowNumber = 1;
-
-        var headerRow = new Dictionary<string, string>
-        {
-            [RowNumberKey] = currentRowNumber.ToString()
-        };
-
-        foreach (var header in Headers) headerRow[header] = header;
-
-        AddMatchingCells(headerRow, headers, matcher, currentRowNumber, matches, maxMatches);
-
-        while (matches.Count < maxMatches && await enumerator.MoveNextAsync())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            currentRowNumber++;
-
-            var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
-
-            AddMatchingCells(row, headers, matcher, currentRowNumber, matches, maxMatches);
-        }
-
-        return matches;
-    }
-
-    /// <summary>
-    ///     Finds the first occurrence of the specified text in the CSV data, optionally within a single header.
-    /// </summary>
-    public Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindFirstAsync(
-        string filePath,
-        string searchText,
-        string? searchHeader = null,
-        CancellationToken cancellationToken = default)
-    {
-        return FindNextAsync(filePath, searchText, searchHeader, cancellationToken: cancellationToken);
-    }
-
-    /// <summary>
-    ///     Finds the next occurrence of the specified text after the supplied row and header.
-    /// </summary>
-    private async Task<(Dictionary<string, string> Row, string Header, int RowNumber)?> FindNextAsync(
-        string filePath,
-        string searchText,
-        string? searchHeader = null,
-        int startAfterRowNumber = 0,
-        string? startAfterHeader = null,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(searchText)) return null;
-
-        await EnsureHeadersLoadedAsync(filePath, cancellationToken);
-
-        if (!string.IsNullOrWhiteSpace(searchHeader)
-            && !searchHeader.Equals(RowNumberKey, StringComparison.OrdinalIgnoreCase)
-            && !Headers.Contains(searchHeader, StringComparer.OrdinalIgnoreCase))
-            return null;
-
-        await using var enumerator = ParserLineEnumerator(filePath, cancellationToken);
-
-        if (!await enumerator.MoveNextAsync()) return null;
-
-        var currentRowNumber = 1;
-        var headersToSearch = string.IsNullOrWhiteSpace(searchHeader)
-            ? Headers.Prepend(RowNumberKey).ToArray()
-            : searchHeader.Equals(RowNumberKey, StringComparison.OrdinalIgnoreCase)
-                ? [RowNumberKey]
-                : Headers
-                    .Where(header => header.Equals(searchHeader, StringComparison.OrdinalIgnoreCase))
-                    .ToArray();
-
-        var startAfterHeaderIndex = string.IsNullOrWhiteSpace(startAfterHeader)
-            ? -1
-            : Array.FindIndex(
-                headersToSearch,
-                header => header.Equals(startAfterHeader, StringComparison.OrdinalIgnoreCase));
-
-        var headerRow = new Dictionary<string, string>
-        {
-            [RowNumberKey] = currentRowNumber.ToString()
-        };
-
-        foreach (var header in Headers) headerRow[header] = header;
-
-        var headerMatch = FindMatchInRow(
-            headerRow,
-            headersToSearch,
-            searchText,
-            currentRowNumber,
-            startAfterRowNumber,
-            startAfterHeaderIndex);
-
-        if (headerMatch is not null) return headerMatch;
-
-        while (await enumerator.MoveNextAsync())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            currentRowNumber++;
-
-            var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
-
-            var match = FindMatchInRow(
-                row,
-                headersToSearch,
-                searchText,
-                currentRowNumber,
-                startAfterRowNumber,
-                startAfterHeaderIndex);
-
-            if (match is not null) return match;
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    ///     Finds a matching value in the supplied row while respecting the requested starting position.
-    /// </summary>
-    private static (Dictionary<string, string> Row, string Header, int RowNumber)? FindMatchInRow(
-        Dictionary<string, string> row,
-        IReadOnlyList<string> headersToSearch,
-        string searchText,
-        int currentRowNumber,
-        int startAfterRowNumber,
-        int startAfterHeaderIndex)
-    {
-        var firstHeaderIndex = currentRowNumber == startAfterRowNumber
-            ? startAfterHeaderIndex + 1
-            : 0;
-        if (currentRowNumber <= startAfterRowNumber) return null;
-        for (var headerIndex = firstHeaderIndex; headerIndex < headersToSearch.Count; headerIndex++)
-        {
-            var header = headersToSearch[headerIndex];
-
-            if (!row.TryGetValue(header, out var value)) continue;
-
-            if (value.Contains(searchText, StringComparison.OrdinalIgnoreCase)) return (row, header, currentRowNumber);
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    ///     Adds matching cells from a row until either the row is exhausted or the maximum match count is reached.
-    /// </summary>
-    private static void AddMatchingCells(
-        Dictionary<string, string> row,
-        IReadOnlyList<string> headersToSearch,
-        Func<string, bool> matcher,
-        int currentRowNumber,
-        ICollection<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)> matches,
-        int maxMatches)
-    {
-        foreach (var header in headersToSearch)
-        {
-            if (matches.Count >= maxMatches) return;
-            if (!row.TryGetValue(header, out var value)) continue;
-            if (!matcher(value)) continue;
-            matches.Add((row, header, value, currentRowNumber));
+            yield return line;
         }
     }
-
-    /// <summary>
-    ///     Loads headers from the file if they have not already been read.
-    /// </summary>
-    private async Task EnsureHeadersLoadedAsync(
-        string filePath,
-        CancellationToken cancellationToken = default)
-    {
-        if (Headers.Count > 0) return;
-
-        await ReadHeadersAsync(filePath, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Builds a row dictionary from parsed field values and includes the CSV row number.
-    /// </summary>
-    private Dictionary<string, string> BuildRow(IReadOnlyList<string> values, int rowNumber)
-    {
-        var row = new Dictionary<string, string>(Headers.Count + 1)
-        {
-            [RowNumberKey] = rowNumber.ToString()
-        };
-
-        for (var i = 0; i < Headers.Count; i++) row[Headers[i]] = i < values.Count ? values[i] : string.Empty;
-
-        return row;
-    }
-
-    /// <summary>
-    ///     Parses a single CSV line into field values, handling quoted fields and escaped quotes.
-    /// </summary>
-    private static IReadOnlyList<string> ParseCsvLine(string line)
+    private static List<string> ParseCsvLine(string line)
     {
         var fields = new List<string>(Math.Max(1, line.Length / 8));
         var current = new StringBuilder(Math.Min(line.Length, 256));
@@ -409,5 +79,92 @@ public class Parser
 
         fields.Add(current.ToString());
         return fields;
+    }
+    private Dictionary<string, string> BuildRow(IReadOnlyList<string> values, int rowNumber)
+    {
+        var row = new Dictionary<string, string>(Headers.Count + 1)
+        {
+            [RowNumberKey] = rowNumber.ToString()
+        };
+
+        for (var i = 0; i < Headers.Count; i++) row[Headers[i]] = i < values.Count ? values[i] : string.Empty;
+
+        return row;
+    }
+    private static void AddMatchingCells(Dictionary<string, string> row, IReadOnlyList<string> headersToSearch, Func<string, bool> matcher, int currentRowNumber, ICollection<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)> matches, int maxMatches)
+    {
+        foreach (var header in headersToSearch)
+        {
+            if (matches.Count >= maxMatches) return;
+            if (!row.TryGetValue(header, out var value) || !matcher(value)) continue;
+            matches.Add((row, header, value, currentRowNumber));
+        }
+    }
+    
+    /// <summary>
+    ///     Reads the first row of the file and stores it as the parser's header collection.
+    /// </summary>
+    public async Task ReadHeadersAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested) return;
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+
+        if (await enumerator.MoveNextAsync())
+        {
+            Headers = ParseCsvLine(enumerator.Current);
+        }
+        else
+        {
+            Headers = [];
+        }
+    }
+    
+    public async Task<ObservableCollection<Dictionary<string, string>>> ReadRangeAsync(string filePath, int startRow, int endRow, CancellationToken cancellationToken = default)
+    {
+        await ReadHeadersAsync(filePath, cancellationToken);
+        // Variables
+        var currentRowNumber = 1;
+        var rows = new ObservableCollection<Dictionary<string, string>>();
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        
+        // Exception prevention
+        if (startRow <= 0 || endRow < startRow || !await enumerator.MoveNextAsync()) return rows;
+
+        // Processing
+        while (await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
+        {
+            currentRowNumber++;
+            if (currentRowNumber < startRow) continue;
+            if (currentRowNumber > endRow) break;
+            rows.Add(BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber));
+        }
+        return rows;
+    }
+    public async Task<IReadOnlyList<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>> ReadMatchesAsync(string filePath, Func<string, bool> matcher, IReadOnlyList<string>? headersToSearch, int maxMatches, CancellationToken cancellationToken = default, IProgress<int>? progress = null)
+    {
+        await ReadHeadersAsync(filePath, cancellationToken);
+        // Variables
+        var headers = headersToSearch ?? Headers.Prepend(RowNumberKey).ToArray();
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        var currentRowNumber = 1;
+        var matches = new List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>();
+        var headerRow = new Dictionary<string, string> { [RowNumberKey] = "1" };
+        
+        // Exception prevention
+        if (!headers.Any()) return matches;
+        
+        // Processing
+        foreach (var header in headers) headerRow[header] = header;
+        AddMatchingCells(headerRow, headers, matcher, currentRowNumber, matches, maxMatches);
+        progress?.Report(matches.Count);
+        while (matches.Count < maxMatches && await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
+        {
+            currentRowNumber++;
+            var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
+            var previousMatchCount = matches.Count;
+            AddMatchingCells(row, headers, matcher, currentRowNumber, matches, maxMatches);
+            if (matches.Count > previousMatchCount) progress?.Report(matches.Count);
+        }
+        return matches;
     }
 }

@@ -253,13 +253,13 @@ public partial class MainWindow : Window
 
             if (command.Equals("hide", StringComparison.OrdinalIgnoreCase))
             {
-                Command_Hide(arguments);
+                Command_Hide(arguments, cancellationToken);
                 return;
             }
 
             if (command.Equals("unhide", StringComparison.OrdinalIgnoreCase))
             {
-                Command_Unhide(arguments);
+                Command_Unhide(arguments, cancellationToken);
                 return;
             }
 
@@ -283,6 +283,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task Command_LoadAsync(string[] arguments, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested) return;
         const string errorMessage = "Usage: load (int) / load (int) (int)";
         switch (arguments.Length)
         {
@@ -314,13 +315,12 @@ public partial class MainWindow : Window
         }
     }
 
-    //private const string CommandFindUsage = "Usage: find word, find /regex/, find word columnName, or find /regex/ /columnRegex/";
-
     /// <summary>
     ///     Handles the find command by locating all matching cells in the current file and showing them in a popup window.
     /// </summary>
     private async Task Command_FindAsync(string[] arguments, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested) return;
         // Argument 1: Required
         var searchText = arguments[0];
         var searchDescription = IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
@@ -336,24 +336,30 @@ public partial class MainWindow : Window
             return;
         }
 
-        StatusTextBlock.Text = searchHeader is null
-            ? $"Searching file for {searchDescription}..."
-            : searchHeader == Parser.RowNumberKey
-                ? $"Searching file row numbers for {searchDescription}..."
-                : $"Searching file column {searchHeader} for {searchDescription}...";
-
         var searchMatcher = CreateSearchMatcher(searchText);
+        var searchBaseText = searchHeader switch
+        {
+            null => $"Searching file for {searchDescription}...",
+            Parser.RowNumberKey => $"Searching file row numbers for {searchDescription}...",
+            _ => $"Searching file column {searchHeader} for {searchDescription}..."
+        };
 
         if (_currentFilePath != null)
         {
-            var parserMatches = await Parser.FindMatchesAsync(
+            StatusTextBlock.Text = searchBaseText;
+
+            var progress = new Progress<int>(count =>
+            {
+                StatusTextBlock.Text = $"{searchBaseText} Found {count:N0} match(es) so far.";
+            });
+
+            var parserMatches = await Parser.ReadMatchesAsync(
                 _currentFilePath,
                 searchMatcher,
                 searchHeaders,
                 Configuration.AutoFindRows,
-                cancellationToken);
-
-            cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken,
+                progress);
 
             if (parserMatches.Count == 0)
             {
@@ -406,6 +412,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void Command_Filter(string[] arguments, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested) return;
         switch (arguments.Length)
         {
             case 0:
@@ -413,65 +420,52 @@ public partial class MainWindow : Window
                     "Usage: filter word, filter /regex/, filter columnName, filter /columnRegex/, filter word columnName, or filter clear";
                 break;
             case 1:
+                
                 // Remove the filter
                 if (arguments[0].Equals("clear", StringComparison.OrdinalIgnoreCase))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
                     _gridView.Filter = null!;
                     _gridView.Refresh();
                     FilterTextBlock.Text = "";
                     StatusTextBlock.Text = "Filter cleared.";
                     break;
                 }
-
+                
+                // Filter header of empty value
                 var matchingHeaders = FindHeadersByNameLetterOrRegex(arguments[0]);
                 if (matchingHeaders.Count > 0)
                 {
+                    if (cancellationToken.IsCancellationRequested) return;
                     _gridView.Filter = item =>
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-
                         if (item is not Dictionary<string, string> row) return false;
-
                         foreach (var matchingHeader in matchingHeaders)
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-
                             if (!row.TryGetValue(matchingHeader, out var value)) continue;
                             if (!string.IsNullOrWhiteSpace(value)
                                 && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase))
                                 return true;
                         }
-
                         return false;
                     };
-
                     _gridView.Refresh();
-
                     FilterTextBlock.Text = matchingHeaders.Count == 1
                         ? $"Filtered rows where column \"{matchingHeaders[0]}\" is not empty and not \\N."
                         : $"Filtered rows where any of {matchingHeaders.Count} matched columns are not empty and not \\N.";
-
                     break;
                 }
-
+                
+                // Filter rows by defined value
+                if (cancellationToken.IsCancellationRequested) return;
                 var matcher = CreateSearchMatcher(arguments[0]);
-
                 _gridView.Filter = item =>
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
                     if (item is not Dictionary<string, string> row) return false;
-
                     foreach (var header in Parser.Headers)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-
                         if (!row.TryGetValue(header, out var value)) continue;
                         if (matcher(value)) return true;
                     }
-
                     return false;
                 };
                 _gridView.Refresh();
@@ -481,8 +475,10 @@ public partial class MainWindow : Window
                     : $"Filtered rows containing \"{arguments[0]}\".";
                 break;
             case 2:
+                if (cancellationToken.IsCancellationRequested) return;
                 var valueSearchTarget = arguments[0];
                 var columnSearchTarget = arguments[1];
+                var valueMatcher = CreateSearchMatcher(valueSearchTarget);
                 var headersToSearch = FindHeadersByNameLetterOrRegex(columnSearchTarget);
 
                 if (headersToSearch.Count == 0)
@@ -490,23 +486,15 @@ public partial class MainWindow : Window
                     StatusTextBlock.Text = $"Column target not found: {columnSearchTarget}";
                     break;
                 }
-
-                var valueMatcher = CreateSearchMatcher(valueSearchTarget);
-
+                
                 _gridView.Filter = item =>
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
                     if (item is not Dictionary<string, string> row) return false;
-
                     foreach (var header in headersToSearch)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-
                         if (!row.TryGetValue(header, out var value)) continue;
                         if (valueMatcher(value)) return true;
                     }
-
                     return false;
                 };
 
@@ -515,7 +503,6 @@ public partial class MainWindow : Window
                 var valueDescription = IsRegexTarget(valueSearchTarget)
                     ? $"regex {valueSearchTarget}"
                     : $"\"{valueSearchTarget}\"";
-
                 FilterTextBlock.Text = headersToSearch.Count == 1
                     ? $"Filtered rows where column \"{headersToSearch[0]}\" matches {valueDescription}."
                     : $"Filtered rows where any of {headersToSearch.Count} matched columns match {valueDescription}.";
@@ -530,7 +517,7 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Handles the hide command by hiding a single column or a range of columns.
     /// </summary>
-    private void Command_Hide(string[] arguments)
+    private void Command_Hide(string[] arguments, CancellationToken cancellationToken)
     {
         const string errorMessage =
             "Error hiding columns. Please check your input and try again.\nUsage: \"hide a b\" or \"hide columnName1 columnName2\"";
@@ -543,10 +530,16 @@ public partial class MainWindow : Window
         try
         {
             var startIndex = FindColumnIndexByNameOrLetter(arguments[0]);
+            if (cancellationToken.IsCancellationRequested) return;
             var endIndex = arguments.Length == 2 ? FindColumnIndexByNameOrLetter(arguments[1]) : startIndex;
+            if (cancellationToken.IsCancellationRequested) return;
 
             if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
-            for (var i = startIndex; i <= endIndex; i++) CsvDataGrid.Columns[i].IsVisible = false;
+            for (var i = startIndex; i <= endIndex; i++)
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                CsvDataGrid.Columns[i].IsVisible = false;
+            }
             StatusTextBlock.Text =
                 $"Hidden columns: {GetColumnLetter(ToDataColumnIndex(startIndex))} -> {GetColumnLetter(ToDataColumnIndex(endIndex))}.";
         }
@@ -562,8 +555,9 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Handles the unhide command and restores hidden columns when requested.
     /// </summary>
-    private void Command_Unhide(string[] arguments)
+    private void Command_Unhide(string[] arguments, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested) return;
         switch (arguments.Length)
         {
             case 0:
@@ -578,13 +572,18 @@ public partial class MainWindow : Window
                 }
 
                 var columnsToUnhide = FindColumnsByNameLetterOrRegex(arguments[0], true);
+                if (cancellationToken.IsCancellationRequested) return;
                 if (columnsToUnhide.Count == 0)
                 {
                     StatusTextBlock.Text = $"Column target not found: {arguments[0]}";
                     break;
                 }
 
-                foreach (var columnToUnhide in columnsToUnhide) columnToUnhide.IsVisible = true;
+                foreach (var columnToUnhide in columnsToUnhide)
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    columnToUnhide.IsVisible = true;
+                }
 
                 StatusTextBlock.Text = columnsToUnhide.Count == 1
                     ? $"Unhidden column {columnsToUnhide[0].Header}."
@@ -685,8 +684,6 @@ public partial class MainWindow : Window
                 ]
             });
 
-            cancellationToken.ThrowIfCancellationRequested();
-
             if (files.Count == 0) return;
             CsvDataGrid.FrozenColumnCount = 0;
             _currentFilePath = files[0].Path.LocalPath;
@@ -700,7 +697,7 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = $"Loading {_currentFileName}...";
 
             await Parser.ReadHeadersAsync(_currentFilePath, cancellationToken);
-
+            
             var rowNumberColumn = new DataGridTextColumn
             {
                 Header = "1",
@@ -714,8 +711,6 @@ public partial class MainWindow : Window
             _columnsByLetter["1"] = rowNumberColumn;
             for (var i = 0; i < Parser.Headers.Count; i++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
                 var header = Parser.Headers[i];
                 var columnLetter = GetColumnLetter(i);
                 var column = new DataGridTextColumn
@@ -832,8 +827,6 @@ public partial class MainWindow : Window
         {
             StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
             var rows = await Parser.ReadRangeAsync(_currentFilePath, startRow, endRow, cancellationToken);
-
-            cancellationToken.ThrowIfCancellationRequested();
 
             ReplaceVisibleRows(rows);
 
