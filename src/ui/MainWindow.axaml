@@ -10,7 +10,7 @@
         <Menu Grid.Row="0">
             <MenuItem Header="Open file" Name="OpenButton" Click="OpenButton_Click" />
             <MenuItem Header="Navigate" Name="NavigateButton" Click="NavigateButton_Click" />
-            <MenuItem Header="Command History" />
+            <MenuItem Header="Command History" Name="CommandHistoryButton" Click="CommandHistoryButton_Click" />
             <MenuItem Header="Settings" Click="SettingsButton_Click" />
         </Menu>
         <StackPanel
@@ -71,6 +71,21 @@
                         <NumericUpDown x:Name="NavigateRowNumeric" Minimum="1" Value="1" FormatString="N0" />
                         <Button Content="Go" Click="NavigateGo_Click" />
                     </StackPanel>
+                </StackPanel>
+
+                <!-- Command History Panel -->
+                <StackPanel x:Name="CommandHistoryPanel" IsVisible="False" Spacing="8">
+                    <DockPanel>
+                        <TextBlock Text="Command History" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
+                        <Button Content="Close" Click="CloseInlinePanel_Click" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <ListBox x:Name="CommandHistoryListBox" MaxHeight="300" SelectionChanged="CommandHistoryListBox_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Margin="4" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </StackPanel>
             </Grid>
         </Border>

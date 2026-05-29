@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, string> _editedSettings = new(StringComparer.OrdinalIgnoreCase);
     private readonly DataGridCollectionView _gridView;
     private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = [];
+    private readonly ObservableCollection<string> _commandHistory = [];
     private CancellationTokenSource? _commandCancellationTokenSource = new();
 
     private string? _currentFileName;
@@ -64,6 +65,7 @@ public partial class MainWindow : Window
         CommandExampleTextBlock.IsVisible = Configuration.ShowCommandExamples;
         _gridView = new DataGridCollectionView(_visibleRows);
         CsvDataGrid.ItemsSource = _gridView;
+        CommandHistoryListBox.ItemsSource = _commandHistory;
         Closed += (_, _) =>
         {
             CancelCurrentOperation();
@@ -132,6 +134,27 @@ public partial class MainWindow : Window
                 _editedSettings[setting.Key] = textBox.Text ?? string.Empty;
                 SettingsFieldsContainer.Children.Add(textBox);
             }
+        }
+    }
+
+    private void CommandHistoryButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (CommandHistoryPanel.IsVisible)
+        {
+            CloseInlinePanel();
+            return;
+        }
+
+        ShowInlinePanel(CommandHistoryPanel);
+    }
+
+    private void CommandHistoryListBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (CommandHistoryListBox.SelectedItem is string command)
+        {
+            CommandTextBox.Text = command;
+            CloseInlinePanel();
+            CommandHistoryListBox.SelectedItem = null;
         }
     }
 
@@ -227,6 +250,7 @@ public partial class MainWindow : Window
         InlinePanelContainer.IsVisible = true;
         SettingsPanel.IsVisible = panel == SettingsPanel;
         NavigatePanel.IsVisible = panel == NavigatePanel;
+        CommandHistoryPanel.IsVisible = panel == CommandHistoryPanel;
     }
 
     private void CloseInlinePanel()
@@ -234,6 +258,7 @@ public partial class MainWindow : Window
         InlinePanelContainer.IsVisible = false;
         SettingsPanel.IsVisible = false;
         NavigatePanel.IsVisible = false;
+        CommandHistoryPanel.IsVisible = false;
     }
 
     /// <summary>
@@ -281,31 +306,36 @@ public partial class MainWindow : Window
                 return;
             }
 
+            bool isValid = false;
             if (command.Equals("load", StringComparison.OrdinalIgnoreCase))
             {
                 await Command_LoadAsync(arguments, cancellationToken);
-                return;
+                isValid = true;
             }
-
-            if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
+            else if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
             {
                 await Command_FindAsync(arguments, cancellationToken);
-                return;
+                isValid = true;
             }
-
-            if (command.Equals("hide", StringComparison.OrdinalIgnoreCase))
+            else if (command.Equals("hide", StringComparison.OrdinalIgnoreCase))
             {
                 Command_Hide(arguments, cancellationToken);
-                return;
+                isValid = true;
             }
-
-            if (command.Equals("unhide", StringComparison.OrdinalIgnoreCase))
+            else if (command.Equals("unhide", StringComparison.OrdinalIgnoreCase))
             {
                 Command_Unhide(arguments, cancellationToken);
-                return;
+                isValid = true;
+            }
+            else
+            {
+                StatusTextBlock.Text = $"Unknown command: {command}";
             }
 
-            StatusTextBlock.Text = $"Unknown command: {command}";
+            if (isValid)
+            {
+                LogCommand(commandText.Trim());
+            }
         }
         catch (OperationCanceledException)
         {
@@ -317,6 +347,20 @@ public partial class MainWindow : Window
                 _commandCancellationTokenSource = null;
 
             SetIsBusy(false);
+        }
+    }
+
+    private void LogCommand(string command)
+    {
+        var maxItems = Configuration.MaxCommandHistoryItems;
+        if (maxItems <= 0) return;
+
+        _commandHistory.Remove(command);
+        _commandHistory.Insert(0, command);
+
+        while (_commandHistory.Count > maxItems)
+        {
+            _commandHistory.RemoveAt(_commandHistory.Count - 1);
         }
     }
 
@@ -458,30 +502,29 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = errorMessage;
             return;
         }
-
-        try
+        var startIndex = FindColumnIndexByNameOrLetter(arguments[0]);
+        var endIndex = arguments.Length == 2 ? FindColumnIndexByNameOrLetter(arguments[1]) : startIndex;
+        
+        if (startIndex == -1 || endIndex == -1)
         {
-            var startIndex = FindColumnIndexByNameOrLetter(arguments[0]);
-            if (cancellationToken.IsCancellationRequested) return;
-            var endIndex = arguments.Length == 2 ? FindColumnIndexByNameOrLetter(arguments[1]) : startIndex;
-            if (cancellationToken.IsCancellationRequested) return;
-
-            if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
-            for (var i = startIndex; i <= endIndex; i++)
-            {
-                if (cancellationToken.IsCancellationRequested) return;
-                CsvDataGrid.Columns[i].IsVisible = false;
-            }
-            StatusTextBlock.Text =
-                $"Hidden columns: {GetColumnLetter(ToDataColumnIndex(startIndex))} -> {GetColumnLetter(ToDataColumnIndex(endIndex))}.";
+            var missing = new List<string>();
+            if (startIndex == -1) missing.Add(arguments[0]);
+            if (endIndex == -1 && arguments.Length == 2 && arguments[1] != arguments[0]) missing.Add(arguments[1]);
+            
+            StatusTextBlock.Text = $"Column(s) not found: {string.Join(", ", missing)}";
+            return;
         }
-        catch (Exception ex)
-        {
-            StatusTextBlock.Text = errorMessage;
-#if DEBUG
-            Console.WriteLine($"Error hiding columns: {ex.Message}");
-#endif
+        
+        if (cancellationToken.IsCancellationRequested) return;
+        if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
+        
+        for (var i = startIndex; i <= endIndex; i++)
+        { 
+            if (cancellationToken.IsCancellationRequested) return; 
+            CsvDataGrid.Columns[i].IsVisible = false;
         }
+        StatusTextBlock.Text =
+            $"Hidden columns: {GetColumnLetter(ToDataColumnIndex(startIndex))} -> {GetColumnLetter(ToDataColumnIndex(endIndex))}.";
     }
 
     /// <summary>
@@ -837,16 +880,31 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(searchValue)) return null;
 
         var normalizedSearchValue = searchValue.Trim();
-        return _columnsByName.TryGetValue(normalizedSearchValue, out var columnByName)
-            ? columnByName
-            : _columnsByLetter.GetValueOrDefault(normalizedSearchValue);
+        
+        // Exact match first
+        if (_columnsByName.TryGetValue(normalizedSearchValue, out var columnByName))
+        {
+            return columnByName;
+        }
+
+        // Case-insensitive name match
+        var caseInsensitiveMatch = _columnsByName.FirstOrDefault(kvp => 
+            kvp.Key.Equals(normalizedSearchValue, StringComparison.OrdinalIgnoreCase)).Value;
+        
+        if (caseInsensitiveMatch is not null)
+        {
+            return caseInsensitiveMatch;
+        }
+
+        var upperSearchValue = normalizedSearchValue.ToUpperInvariant();
+        return _columnsByLetter.GetValueOrDefault(upperSearchValue);
     }
 
     /// <summary>
     ///     Finds columns by exact column name, spreadsheet-style letter, or a slash-delimited regex.
     ///     Regex targets are matched against both raw CSV headers and displayed column headers.
     /// </summary>
-    private IReadOnlyList<DataGridColumn> FindColumnsByNameLetterOrRegex(
+    private List<DataGridColumn> FindColumnsByNameLetterOrRegex(
         string searchValue,
         bool includeHidden = false)
     {
@@ -893,14 +951,13 @@ public partial class MainWindow : Window
                 }
             }
         }
-
         return matchingColumns;
     }
 
     /// <summary>
     ///     Finds parser headers by exact column name, spreadsheet-style letter, or a slash-delimited regex.
     /// </summary>
-    private IReadOnlyList<string> FindHeadersByNameLetterOrRegex(string searchValue)
+    private List<string> FindHeadersByNameLetterOrRegex(string searchValue)
     {
         var columns = FindColumnsByNameLetterOrRegex(searchValue, true);
         var headers = new List<string>(columns.Count);
