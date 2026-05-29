@@ -6,8 +6,9 @@
         x:Class="CSVoom.MainWindow"
         Name="MainWindowElement"
         Title="CSVoom">
-    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
-        <Menu Grid.Row="0">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0">
+        <!-- Top bar -->
+        <Menu Grid.Row="0" >
             <MenuItem Header="Open file" Name="OpenButton" Click="OpenButton_Click" />
             <MenuItem Header="Navigate" Name="NavigateButton" Click="NavigateButton_Click" />
             <MenuItem Header="Command History" Name="CommandHistoryButton" Click="CommandHistoryButton_Click" />
@@ -15,7 +16,6 @@
         </Menu>
         <StackPanel
             Grid.Row="0"
-            Margin="8,8,8,8"
             Orientation="Horizontal"
             HorizontalAlignment="Right"
             Spacing="8">
@@ -38,10 +38,10 @@
         </StackPanel>
 
         <!-- Inline Panels -->
-        <Border Grid.Row="2"
+        <Border Grid.Row="1"
                 x:Name="InlinePanelContainer"
                 IsVisible="False"
-                BorderBrush="Gray"
+                BorderBrush="#202020"
                 BorderThickness="0,0,0,1"
                 Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
             <Grid Margin="8">

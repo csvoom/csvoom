@@ -1,11 +1,23 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="CSVoom.App"
-             RequestedThemeVariant="Default">
-    <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
-
+             RequestedThemeVariant="Dark"
+             Name="CSVoom">
+    <!-- "Default" ThemeVariant follows the system theme variant. "Dark" or "Light" are other available options. -->
+    
     <Application.Styles>
         <FluentTheme />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+        
+        <Styles>
+            <Style Selector="Window">
+                <Setter Property="Background" Value="#151515"/>
+            </Style>
+            <Style Selector="Menu">
+                <Setter Property="Background" Value="#101010"/>
+                <Setter Property="BorderBrush" Value="#202020"/>
+                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            </Style>
+        </Styles>
     </Application.Styles>
 </Application>

@@ -16,7 +16,7 @@ public class Parser
     // Variables & applied objects
 
     public const string RowNumberKey = "__CsvRowNumber";
-    public IReadOnlyList<string> Headers { get; private set; } = [];
+    public List<string> Headers { get; private set; } = [];
     
     // Constructor methods
     public static StreamReader BuildReader(string filePath)
@@ -83,7 +83,7 @@ public class Parser
         return fields;
     }
     
-    private Dictionary<string, string> BuildRow(IReadOnlyList<string> values, int rowNumber)
+    private Dictionary<string, string> BuildRow(List<string> values, int rowNumber)
     {
         var row = new Dictionary<string, string>(Headers.Count + 1)
         {
@@ -143,17 +143,18 @@ public class Parser
         return rows;
     }
 
-    public async IAsyncEnumerable<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)> ReadMatchesAsyncEnumerable(string filePath, Func<string, bool> matcher, IReadOnlyList<string>? headersToSearch, int maxMatches, [EnumeratorCancellation] CancellationToken cancellationToken = default, IProgress<int>? progress = null)
+    public async IAsyncEnumerable<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)> ReadMatchesAsyncEnumerable(string filePath, Func<string, bool> matcher, List<string>? headersToSearch, int maxMatches, IProgress<int>? progress = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
         // Variables
-        var headers = headersToSearch ?? Headers.Prepend(RowNumberKey).ToArray();
+        var headers = headersToSearch ?? Headers.Prepend(RowNumberKey);
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
         var currentRowNumber = 1;
         var matchCount = 0;
         
         // Exception prevention
-        if (!headers.Any()) yield break;
+        var enumerable = headers.ToList();
+        if (enumerable.Count == 0) yield break;
         
         // Processing
         if (!await enumerator.MoveNextAsync()) yield break;
@@ -163,7 +164,7 @@ public class Parser
             currentRowNumber++;
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
             var foundInThisRow = false;
-            foreach (var header in headers)
+            foreach (var header in enumerable)
             {
                 if (matchCount >= maxMatches) break;
                 if (!row.TryGetValue(header, out var value) || !matcher(value)) continue;
@@ -175,10 +176,10 @@ public class Parser
         }
     }
 
-    public async Task<IReadOnlyList<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>> ReadMatchesAsync(string filePath, Func<string, bool> matcher, IReadOnlyList<string>? headersToSearch, int maxMatches, CancellationToken cancellationToken = default, IProgress<int>? progress = null)
+    public async Task<List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>> ReadMatchesAsync(string filePath, Func<string, bool> matcher, List<string>? headersToSearch, int maxMatches, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
     {
         var matches = new List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>();
-        await foreach (var match in ReadMatchesAsyncEnumerable(filePath, matcher, headersToSearch, maxMatches, cancellationToken, progress))
+        await foreach (var match in ReadMatchesAsyncEnumerable(filePath, matcher, headersToSearch, maxMatches, progress, cancellationToken))
         {
             matches.Add(match);
         }

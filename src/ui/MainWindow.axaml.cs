@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.IO;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -50,8 +49,7 @@ public partial class MainWindow : Window
 
     private string? _currentFileName;
     private string? _currentFilePath;
-    private int _totalRows;
-    private bool _isBusy = false;
+    private bool _isBusy;
 
     /// <summary>
     ///     Initializes the main window and connects the visible row collection to the data grid.
@@ -447,8 +445,8 @@ public partial class MainWindow : Window
                 searchMatcher,
                 searchHeaders,
                 Configuration.AutoFindRows,
-                cancellationToken,
-                progress))
+                progress,
+                cancellationToken))
             {
                 var result = new FindResult
                 {
@@ -626,22 +624,6 @@ public partial class MainWindow : Window
             : string.Empty;
     }
 
-    private async Task<int> CountTotalRowsAsync(string filePath, CancellationToken cancellationToken)
-    {
-        var count = 0;
-        using (var reader = Parser.BuildReader(filePath))
-        {
-            // Skip header
-            await reader.ReadLineAsync(cancellationToken);
-            while (await reader.ReadLineAsync(cancellationToken) is not null)
-            {
-                count++;
-                if (cancellationToken.IsCancellationRequested) break;
-            }
-        }
-        return count;
-    }
-
     /// <summary>
     ///     Opens a file picker, loads the selected CSV or GZIP file, and initializes the data grid columns.
     /// </summary>
@@ -714,8 +696,7 @@ public partial class MainWindow : Window
                 _columnsByName[header] = column;
                 _columnsByLetter[columnLetter] = column;
             }
-
-            _totalRows = await CountTotalRowsAsync(_currentFilePath, cancellationToken);
+            
             NavigateColumnBox.ItemsSource = Parser.Headers;
 
             await LoadRangeIntoViewAsync(1, Configuration.AutoLoadRows, cancellationToken);
@@ -841,16 +822,6 @@ public partial class MainWindow : Window
         RunButton.Content = toStatus ? "Cancel" : "Run";
         OpenButton.IsEnabled = !toStatus;
         _isBusy = toStatus;
-    }
-
-    /// <summary>
-    ///     Replaces the currently visible rows and refreshes the grid view.
-    /// </summary>
-    private void ReplaceVisibleRows(IEnumerable<Dictionary<string, string>> rows)
-    {
-        _visibleRows.Clear();
-        foreach (var row in rows) _visibleRows.Add(row);
-        _gridView.Refresh();
     }
 
     /// <summary>
@@ -1050,7 +1021,10 @@ public partial class MainWindow : Window
 
     private sealed class FindResult
     {
-        public required Dictionary<string, string>? Row { get; init; }
+        public required Dictionary<string, string>? Row
+        {
+            init => throw new NotImplementedException();
+        }
         public required string Header { get; init; }
         public required string Value { get; init; }
         public required string RowNumber { get; init; }
