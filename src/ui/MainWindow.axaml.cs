@@ -156,25 +156,64 @@ public partial class MainWindow : Window
     private void NavigateGo_Click(object? sender, RoutedEventArgs e)
     {
         var targetRow = (int)(NavigateRowNumeric.Value ?? 1);
-        var targetColumn = NavigateColumnBox.Text;
+        var targetColumnInput = NavigateColumnBox.Text;
 
-        if (targetRow < 1 || targetRow > _totalRows)
+        // Determine header to search for
+        string targetHeader;
+        if (string.IsNullOrWhiteSpace(targetColumnInput))
         {
-            StatusTextBlock.Text = $"Row {targetRow} is out of range.";
-            return;
+            targetHeader = Parser.RowNumberKey;
+        }
+        else
+        {
+            var headers = FindHeadersByNameLetterOrRegex(targetColumnInput);
+            if (headers.Count == 0)
+            {
+                StatusTextBlock.Text = $"No matching column found for {targetColumnInput}";
+                return;
+            }
+            targetHeader = headers[0];
         }
 
         // Check if row is already loaded
-        var rowInView = _visibleRows.FirstOrDefault(r => 
+        var rowInView = _visibleRows.FirstOrDefault(r =>
             r.TryGetValue(Parser.RowNumberKey, out var val) && int.TryParse(val, out var num) && num == targetRow);
 
         if (rowInView != null)
         {
-            ScrollToMatch(rowInView, targetColumn ?? string.Empty);
+            ScrollToMatch(rowInView, targetHeader);
         }
         else
         {
             StatusTextBlock.Text = $"Row {targetRow} is not currently loaded in the view.";
+        }
+    }
+
+    private void UpdateNavigationRange()
+    {
+        if (_visibleRows.Count == 0)
+        {
+            NavigateRowNumeric.Minimum = 1;
+            NavigateRowNumeric.Maximum = 1;
+            NavigateRowNumeric.Value = 1;
+            return;
+        }
+
+        var rowNumbers = _visibleRows
+            .Select(r => r.TryGetValue(Parser.RowNumberKey, out var val) && int.TryParse(val, out var num) ? num : (int?)null)
+            .Where(n => n.HasValue)
+            .Select(n => n!.Value)
+            .ToList();
+
+        if (rowNumbers.Count > 0)
+        {
+            var min = rowNumbers.Min();
+            var max = rowNumbers.Max();
+            NavigateRowNumeric.Minimum = min;
+            NavigateRowNumeric.Maximum = max;
+            // Snap current value to range if needed
+            if (NavigateRowNumeric.Value < min) NavigateRowNumeric.Value = min;
+            if (NavigateRowNumeric.Value > max) NavigateRowNumeric.Value = max;
         }
     }
     
@@ -387,6 +426,7 @@ public partial class MainWindow : Window
                 }
             }
             _gridView.Refresh();
+            UpdateNavigationRange();
 
             if (foundResults.Count == 0)
             {
@@ -634,8 +674,6 @@ public partial class MainWindow : Window
 
             _totalRows = await CountTotalRowsAsync(_currentFilePath, cancellationToken);
             NavigateColumnBox.ItemsSource = Parser.Headers;
-            NavigateRowNumeric.Maximum = _totalRows;
-            NavigateRowNumeric.Minimum = 1;
 
             await LoadRangeIntoViewAsync(1, Configuration.AutoLoadRows, cancellationToken);
         }
@@ -733,6 +771,7 @@ public partial class MainWindow : Window
                 }
             }
             _gridView.Refresh();
+            UpdateNavigationRange();
 
             if (rowCount == 0)
             {
@@ -815,21 +854,25 @@ public partial class MainWindow : Window
 
         var normalizedSearchValue = searchValue.Trim();
 
-        if (!TryCreateRegexTarget(normalizedSearchValue, out var regex))
+        var matchingColumns = new List<DataGridColumn>();
+
+        var isRegex = TryCreateRegexTarget(normalizedSearchValue, out var regex);
+
+        if (!isRegex)
         {
             var exactColumn = FindColumnByNameOrLetter(normalizedSearchValue);
-            return exactColumn is not null && (includeHidden || exactColumn.IsVisible)
-                ? [exactColumn]
-                : [];
+            if (exactColumn is not null && (includeHidden || exactColumn.IsVisible))
+            {
+                matchingColumns.Add(exactColumn);
+            }
         }
-
-        var matchingColumns = new List<DataGridColumn>();
 
         for (var columnIndex = 0; columnIndex < CsvDataGrid.Columns.Count; columnIndex++)
         {
             var column = CsvDataGrid.Columns[columnIndex];
 
             if (!includeHidden && !column.IsVisible) continue;
+            if (!isRegex && matchingColumns.Contains(column)) continue;
 
             var dataHeader = columnIndex == 0
                 ? Parser.RowNumberKey
@@ -837,7 +880,18 @@ public partial class MainWindow : Window
 
             var displayHeader = column.Header?.ToString() ?? string.Empty;
 
-            if (regex.IsMatch(dataHeader) || regex.IsMatch(displayHeader)) matchingColumns.Add(column);
+            if (isRegex)
+            {
+                if (regex.IsMatch(dataHeader) || regex.IsMatch(displayHeader)) matchingColumns.Add(column);
+            }
+            else
+            {
+                if (dataHeader.Contains(normalizedSearchValue, StringComparison.OrdinalIgnoreCase) ||
+                    displayHeader.Contains(normalizedSearchValue, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchingColumns.Add(column);
+                }
+            }
         }
 
         return matchingColumns;
