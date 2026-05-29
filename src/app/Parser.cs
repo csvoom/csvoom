@@ -16,11 +16,10 @@ public class Parser
     // Variables & applied objects
 
     public const string RowNumberKey = "__CsvRowNumber";
-
     public IReadOnlyList<string> Headers { get; private set; } = [];
     
     // Constructor methods
-    private static StreamReader BuildReader(string filePath)
+    public static StreamReader BuildReader(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("File path cannot be null or whitespace", nameof(filePath));
         
@@ -35,6 +34,7 @@ public class Parser
         }
         throw new ArgumentException($"Unsupported file format: {Path.GetExtension(filePath)}");
     }
+    
     private static async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
     {
         if (!File.Exists(filePath))
@@ -49,6 +49,7 @@ public class Parser
             yield return line;
         }
     }
+    
     private static List<string> ParseCsvLine(string line)
     {
         var fields = new List<string>(Math.Max(1, line.Length / 8));
@@ -81,6 +82,7 @@ public class Parser
         fields.Add(current.ToString());
         return fields;
     }
+    
     private Dictionary<string, string> BuildRow(IReadOnlyList<string> values, int rowNumber)
     {
         var row = new Dictionary<string, string>(Headers.Count + 1)

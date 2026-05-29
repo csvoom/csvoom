@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -24,7 +25,6 @@ public partial class MainWindow : Window
     [
         "load ",
         "find ",
-        "focus",
         "hide ",
         "unhide all"
     ];
@@ -33,24 +33,24 @@ public partial class MainWindow : Window
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["load"] = "Arguments: start(int) / start(int) end(int)",
-            ["find"] = "Arguments: word / /regex/ / word columnName / /columnRegex/",
-            ["focus"] = "Arguments: word / /regex/ / columnName / /columnRegex/ / 'clear'",
+            ["find"] = "Arguments: word / word columnName",
             ["hide"] = "Arguments: letter / columnName / /columnRegex/",
             ["unhide"] = "Arguments: all / letter / columnName / /columnRegex/"
         };
 
     private static readonly Parser Parser = new();
 
-    private readonly Dictionary<string, DataGridColumn> _columnsByLetter = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, DataGridColumn> _columnsByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DataGridColumn> _columnsByLetter = [];
+    private readonly Dictionary<string, DataGridColumn> _columnsByName = [];
     private readonly Dictionary<string, string> _editedSettings = new(StringComparer.OrdinalIgnoreCase);
     private readonly DataGridCollectionView _gridView;
-    private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = new();
-    private CancellationTokenSource? _commandCancellationTokenSource;
+    private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = [];
+    private CancellationTokenSource? _commandCancellationTokenSource = new();
 
     private string? _currentFileName;
     private string? _currentFilePath;
-    private bool _isBusy;
+    private int _totalRows;
+    private bool _isBusy = false;
 
     /// <summary>
     ///     Initializes the main window and connects the visible row collection to the data grid.
@@ -68,20 +68,6 @@ public partial class MainWindow : Window
         {
             CancelCurrentOperation();
             CloseInlinePanel();
-        };
-
-        FindResultsListBox.SelectionChanged += (_, _) =>
-        {
-            if (FindResultsListBox.SelectedItem is not FindResult selectedResult) return;
-
-            ScrollToMatch(selectedResult.Row, selectedResult.Header);
-
-            var foundColumnText = selectedResult.Header == Parser.RowNumberKey
-                ? "row numbers"
-                : selectedResult.Header;
-
-            StatusTextBlock.Text =
-                $"Selected at visible row {selectedResult.RowNumber}, column {foundColumnText}.";
         };
     }
 
@@ -153,22 +139,45 @@ public partial class MainWindow : Window
     {
         Configuration.Save(_editedSettings);
         ApplyConfigurationToUi();
-        StatusTextBlock.Text = "Settings saved.";
         CloseInlinePanel();
     }
 
-    private void FindButton_Click(object? sender, RoutedEventArgs e)
+    private void NavigateButton_Click(object? sender, RoutedEventArgs e)
     {
-        if (FindPanel.IsVisible)
+        if (NavigatePanel.IsVisible)
         {
             CloseInlinePanel();
             return;
         }
 
-        ShowInlinePanel(FindPanel);
+        ShowInlinePanel(NavigatePanel);
     }
 
+    private void NavigateGo_Click(object? sender, RoutedEventArgs e)
+    {
+        var targetRow = (int)(NavigateRowNumeric.Value ?? 1);
+        var targetColumn = NavigateColumnBox.Text;
 
+        if (targetRow < 1 || targetRow > _totalRows)
+        {
+            StatusTextBlock.Text = $"Row {targetRow} is out of range.";
+            return;
+        }
+
+        // Check if row is already loaded
+        var rowInView = _visibleRows.FirstOrDefault(r => 
+            r.TryGetValue(Parser.RowNumberKey, out var val) && int.TryParse(val, out var num) && num == targetRow);
+
+        if (rowInView != null)
+        {
+            ScrollToMatch(rowInView, targetColumn ?? string.Empty);
+        }
+        else
+        {
+            StatusTextBlock.Text = $"Row {targetRow} is not currently loaded in the view.";
+        }
+    }
+    
     private void CloseInlinePanel_Click(object? sender, RoutedEventArgs e)
     {
         CloseInlinePanel();
@@ -178,14 +187,14 @@ public partial class MainWindow : Window
     {
         InlinePanelContainer.IsVisible = true;
         SettingsPanel.IsVisible = panel == SettingsPanel;
-        FindPanel.IsVisible = panel == FindPanel;
+        NavigatePanel.IsVisible = panel == NavigatePanel;
     }
 
     private void CloseInlinePanel()
     {
         InlinePanelContainer.IsVisible = false;
         SettingsPanel.IsVisible = false;
-        FindPanel.IsVisible = false;
+        NavigatePanel.IsVisible = false;
     }
 
     /// <summary>
@@ -242,12 +251,6 @@ public partial class MainWindow : Window
             if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
             {
                 await Command_FindAsync(arguments, cancellationToken);
-                return;
-            }
-
-            if (command.Equals("focus", StringComparison.OrdinalIgnoreCase))
-            {
-                Command_Focus(arguments, cancellationToken);
                 return;
             }
 
@@ -355,8 +358,6 @@ public partial class MainWindow : Window
             var foundResults = new ObservableCollection<FindResult>();
             var rowsToShow = new HashSet<Dictionary<string, string>>(ReferenceEqualityComparer.Instance);
             
-            ShowInlinePanel(FindPanel);
-            FindResultsListBox.ItemsSource = foundResults;
 
             await foreach (var match in Parser.ReadMatchesAsyncEnumerable(
                 _currentFilePath,
@@ -403,124 +404,6 @@ public partial class MainWindow : Window
                 $"Found {foundResults.Count:N0} instance(s) of {searchDescription}.";
         }
         CsvDataGrid.Focus();
-    }
-
-    /// <summary>
-    ///     Handles the focus command by applying or clearing the current grid filter.
-    /// </summary>
-    private void Command_Focus(string[] arguments, CancellationToken cancellationToken)
-    {
-        if (cancellationToken.IsCancellationRequested) return;
-        switch (arguments.Length)
-        {
-            case 0:
-                StatusTextBlock.Text =
-                    "Usage: focus word, focus /regex/, focus columnName, focus /columnRegex/, focus word columnName, or focus clear";
-                break;
-            case 1:
-                
-                // Remove the focus
-                if (arguments[0].Equals("clear", StringComparison.OrdinalIgnoreCase))
-                {
-                    _gridView.Filter = null!;
-                    _gridView.Refresh();
-                    FilterTextBlock.Text = "";
-                    StatusTextBlock.Text = "Focus cleared.";
-                    CsvDataGrid.Focus();
-                    break;
-                }
-                
-                // Focus header of empty value
-                var matchingHeaders = FindHeadersByNameLetterOrRegex(arguments[0]);
-                if (matchingHeaders.Count > 0)
-                {
-                    if (cancellationToken.IsCancellationRequested) return;
-                    _gridView.Filter = item =>
-                    {
-                        if (item is not Dictionary<string, string> row) return false;
-                        foreach (var matchingHeader in matchingHeaders)
-                        {
-                            if (!row.TryGetValue(matchingHeader, out var value)) continue;
-                            if (!string.IsNullOrWhiteSpace(value)
-                                && !value.Trim().Equals(@"\N", StringComparison.OrdinalIgnoreCase))
-                                return true;
-                        }
-                        return false;
-                    };
-                    _gridView.Refresh();
-                    FilterTextBlock.Text = matchingHeaders.Count == 1
-                        ? $"Focused rows where column \"{matchingHeaders[0]}\" is not empty and not \\N."
-                        : $"Focused rows where any of {matchingHeaders.Count} matched columns are not empty and not \\N.";
-
-                    if (matchingHeaders.Count > 0)
-                    {
-                        ScrollToMatch(null, matchingHeaders[0], arguments[0]);
-                    }
-                    break;
-                }
-                
-                // Focus rows by defined value
-                if (cancellationToken.IsCancellationRequested) return;
-                var matcher = CreateSearchMatcher(arguments[0]);
-                _gridView.Filter = item =>
-                {
-                    if (item is not Dictionary<string, string> row) return false;
-                    foreach (var header in Parser.Headers)
-                    {
-                        if (!row.TryGetValue(header, out var value)) continue;
-                        if (matcher(value)) return true;
-                    }
-                    return false;
-                };
-                _gridView.Refresh();
-
-                FilterTextBlock.Text = IsRegexTarget(arguments[0])
-                    ? $"Focused rows matching regex {arguments[0]}."
-                    : $"Focused rows containing \"{arguments[0]}\".";
-                break;
-            case 2:
-                if (cancellationToken.IsCancellationRequested) return;
-                var valueSearchTarget = arguments[0];
-                var columnSearchTarget = arguments[1];
-                var valueMatcher = CreateSearchMatcher(valueSearchTarget);
-                var headersToSearch = FindHeadersByNameLetterOrRegex(columnSearchTarget);
-
-                if (headersToSearch.Count == 0)
-                {
-                    StatusTextBlock.Text = $"Column target not found: {columnSearchTarget}";
-                    break;
-                }
-                
-                _gridView.Filter = item =>
-                {
-                    if (item is not Dictionary<string, string> row) return false;
-                    foreach (var header in headersToSearch)
-                    {
-                        if (!row.TryGetValue(header, out var value)) continue;
-                        if (valueMatcher(value)) return true;
-                    }
-                    return false;
-                };
-
-                _gridView.Refresh();
-
-                var valueDescription = IsRegexTarget(valueSearchTarget)
-                    ? $"regex {valueSearchTarget}"
-                    : $"\"{valueSearchTarget}\"";
-                FilterTextBlock.Text = headersToSearch.Count == 1
-                    ? $"Focused rows where column \"{headersToSearch[0]}\" matches {valueDescription}."
-                    : $"Focused rows where any of {headersToSearch.Count} matched columns match {valueDescription}.";
-
-                if (headersToSearch.Count > 0)
-                {
-                    ScrollToMatch(null, headersToSearch[0], columnSearchTarget);
-                }
-                break;
-            default:
-                StatusTextBlock.Text =
-                    "Usage: focus word, focus /regex/, focus columnName, focus /columnRegex/, or focus word columnName";
-                break;
-        }
     }
 
     /// <summary>
@@ -660,6 +543,22 @@ public partial class MainWindow : Window
             : string.Empty;
     }
 
+    private async Task<int> CountTotalRowsAsync(string filePath, CancellationToken cancellationToken)
+    {
+        var count = 0;
+        using (var reader = Parser.BuildReader(filePath))
+        {
+            // Skip header
+            await reader.ReadLineAsync(cancellationToken);
+            while (await reader.ReadLineAsync(cancellationToken) is not null)
+            {
+                count++;
+                if (cancellationToken.IsCancellationRequested) break;
+            }
+        }
+        return count;
+    }
+
     /// <summary>
     ///     Opens a file picker, loads the selected CSV or GZIP file, and initializes the data grid columns.
     /// </summary>
@@ -732,6 +631,11 @@ public partial class MainWindow : Window
                 _columnsByName[header] = column;
                 _columnsByLetter[columnLetter] = column;
             }
+
+            _totalRows = await CountTotalRowsAsync(_currentFilePath, cancellationToken);
+            NavigateColumnBox.ItemsSource = Parser.Headers;
+            NavigateRowNumeric.Maximum = _totalRows;
+            NavigateRowNumeric.Minimum = 1;
 
             await LoadRangeIntoViewAsync(1, Configuration.AutoLoadRows, cancellationToken);
         }
