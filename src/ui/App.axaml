@@ -15,8 +15,25 @@
             </Style>
             <Style Selector="Menu">
                 <Setter Property="Background" Value="#101010"/>
-                <Setter Property="BorderBrush" Value="#202020"/>
-                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                <Setter Property="BorderBrush" Value="#252525"/>
+                <Setter Property="BorderThickness" Value="1,1,1,1"/>
+            </Style>
+            <Style Selector="MenuItem">
+                <Setter Property="BorderThickness" Value="0, 0, 1, 0"/>
+                <Setter Property="BorderBrush" Value="#252525"/>
+                <Setter Property="Background" Value="#101010"/>
+            </Style>
+            <Style Selector="Button">
+                <Setter Property="BorderThickness" Value="1, 1, 1, 1"/>
+                <Setter Property="BorderBrush" Value="#252525"/>
+                <Setter Property="Background" Value="#101010"/>
+                <Setter Property="CornerRadius" Value="0"/>
+            </Style>
+            <Style Selector="AutoCompleteBox">
+                <Setter Property="Background" Value="#101010"/>
+                <Setter Property="BorderThickness" Value="1, 1, 1, 1"/>
+                <Setter Property="BorderBrush" Value="#252525"/>
+                <Setter Property="CornerRadius" Value="0"/>
             </Style>
         </Styles>
     </Application.Styles>

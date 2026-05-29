@@ -164,9 +164,8 @@ public class Parser
             currentRowNumber++;
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
             var foundInThisRow = false;
-            foreach (var header in enumerable)
+            foreach (var header in enumerable.TakeWhile(header => matchCount < maxMatches))
             {
-                if (matchCount >= maxMatches) break;
                 if (!row.TryGetValue(header, out var value) || !matcher(value)) continue;
                 matchCount++;
                 foundInThisRow = true;

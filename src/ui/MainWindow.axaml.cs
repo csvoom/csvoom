@@ -661,7 +661,7 @@ public partial class MainWindow : Window
             CsvDataGrid.FrozenColumnCount = 0;
             _currentFilePath = files[0].Path.LocalPath;
             _currentFileName = files[0].Name;
-            MainWindowElement.Title = $"CSVoom - {_currentFileName}";
+            MainWindowElement.Title = $"{_currentFileName}";
             _gridView.Filter = null!;
             _visibleRows.Clear();
             _columnsByName.Clear();
@@ -1023,7 +1023,8 @@ public partial class MainWindow : Window
     {
         public required Dictionary<string, string>? Row
         {
-            init => throw new NotImplementedException();
+            get;
+            init;
         }
         public required string Header { get; init; }
         public required string Value { get; init; }
