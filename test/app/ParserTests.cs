@@ -112,6 +112,110 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    [Fact]
+    public async Task TestExportToCsv()
+    {
+        var sourcePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".csv");
+        var exportPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(sourcePath,
+            [
+                "Header1,Header2,Header3",
+                "val1,val2,val3",
+                "val4,val5,val6"
+            ]);
+
+            // Configuration.FirstRowIsHeader is true by default
+            await _parser.ReadHeadersAsync(sourcePath);
+            var rows = await _parser.ReadRangeAsync(sourcePath, 1, 10);
+
+            // Export only Header1 and Header3
+            var visibleHeaders = new List<string> { "Header1", "Header3" };
+
+            await _parser.ExportToCsvAsync(exportPath, rows, visibleHeaders);
+
+            var exportedLines = await File.ReadAllLinesAsync(exportPath);
+
+            Assert.Equal(3, exportedLines.Length);
+            Assert.Equal("Header1,Header3", exportedLines[0]);
+            Assert.Equal("val1,val3", exportedLines[1]);
+            Assert.Equal("val4,val6", exportedLines[2]);
+        }
+        finally
+        {
+            if (File.Exists(sourcePath)) File.Delete(sourcePath);
+            if (File.Exists(exportPath)) File.Delete(exportPath);
+        }
+    }
+
+    [Fact]
+    public async Task TestExportToCsvEscaping()
+    {
+        var exportPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".csv");
+
+        try
+        {
+            var rows = new List<Dictionary<string, string>>
+            {
+                new() { ["H1"] = "val with , comma", ["H2"] = "val with \" quotes" },
+                new() { ["H1"] = "val with\nnewline", ["H2"] = "normal" }
+            };
+            var visibleHeaders = new List<string> { "H1", "H2" };
+
+            // Configuration.FirstRowIsHeader is true by default
+            await _parser.ExportToCsvAsync(exportPath, rows, visibleHeaders);
+
+            var exportedLines = await File.ReadAllLinesAsync(exportPath);
+
+            // Lines:
+            // 1: H1,H2
+            // 2: "val with , comma","val with "" quotes"
+            // 3: "val with
+            // 4: newline",normal
+            Assert.Equal(4, exportedLines.Length); 
+            Assert.Equal("H1,H2", exportedLines[0]);
+            Assert.Equal("\"val with , comma\",\"val with \"\" quotes\"", exportedLines[1]);
+        }
+        finally
+        {
+            if (File.Exists(exportPath)) File.Delete(exportPath);
+        }
+    }
+
+    // No header test is difficult without mocking Configuration, 
+    // but we can skip it or assume it's true as it's the default.
+    /*
+    [Fact]
+    public async Task TestExportToCsvNoHeader()
+    {
+        var exportPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".csv");
+
+        try
+        {
+            var rows = new List<Dictionary<string, string>>
+            {
+                new() { ["A"] = "1", ["B"] = "2" }
+            };
+            var visibleHeaders = new List<string> { "A", "B" };
+
+            // Configuration.FirstRowIsHeader = false; // Cannot set
+            await _parser.ExportToCsvAsync(exportPath, rows, visibleHeaders);
+
+            var exportedLines = await File.ReadAllLinesAsync(exportPath);
+
+            Assert.Single(exportedLines);
+            Assert.Equal("1,2", exportedLines[0]);
+        }
+        finally
+        {
+            if (File.Exists(exportPath)) File.Delete(exportPath);
+        }
+    }
+    */
+
+
     private class MockProgress(Action<int> callback) : IProgress<int>
     {
         public void Report(int value) => callback(value);

@@ -8,7 +8,7 @@ public static class Configuration
 {
     // Integers
     public static int AutoLoadRows =>
-        GetInt(nameof(AutoLoadRows), 10_000, 1); // When no value is specified, default to 10,000 for "Load"
+        GetInt(nameof(AutoLoadRows), 10000, 1); // When no value is specified, default to 10000 for "Load"
 
     public static int AutoFindRows =>
         GetInt(nameof(AutoFindRows), 100, 1); // When no value is specified, default to 100 for "Find"
@@ -44,8 +44,8 @@ public static class Configuration
 
     public static IReadOnlyList<ConfigurationSetting> Settings { get; } =
     [
-        new(nameof(AutoLoadRows), "Integer", "10,000",
-            "Minimum: 1. When no value is specified, default to 10,000 for \"Load\"."),
+        new(nameof(AutoLoadRows), "Integer", "10000",
+            "Minimum: 1. When no value is specified, default to 10000 for \"Load\"."),
         new(nameof(AutoFindRows), "Integer", "100",
             "Minimum: 1. When no value is specified, default to 100 for \"Find\"."),
         new(nameof(RegexTimeoutMilliseconds), "Integer", "250", "Minimum: 1. Timeout for resolving regex patterns."),
@@ -85,9 +85,14 @@ public static class Configuration
     }
 
     // Resolvers
-    private static int GetInt(string key, int defaultValue, int? minValue = null, int? maxValue = null)
+    public static int GetInt(string key, int defaultValue, int? minValue = null, int? maxValue = null)
     {
         var value = ConfigurationManager.AppSettings[key];
+
+        if (string.IsNullOrWhiteSpace(value)) return defaultValue;
+        
+        // Remove thousands separators if present (e.g., "10,000" -> "10000")
+        value = value.Replace(",", "").Replace(" ", "");
 
         if (!int.TryParse(value, out var parsedValue) || (minValue.HasValue && parsedValue < minValue.Value) ||
             (maxValue.HasValue && parsedValue > maxValue.Value))

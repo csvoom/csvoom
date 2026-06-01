@@ -369,23 +369,24 @@ public partial class MainWindow : Window
     {
         if (cancellationToken.IsCancellationRequested) return;
         const string errorMessage = "Usage: load (int) / load (int) (int)";
+        var startRow = 1;
         switch (arguments.Length)
         {
             case 0:
                 StatusTextBlock.Text = errorMessage;
                 break;
             case 1: // Load from argument [0] row
-                if (!int.TryParse(arguments[0], out var startRow) || startRow <= 0)
+                if (!int.TryParse(arguments[0], out startRow) || startRow <= 0)
                 {
                     StatusTextBlock.Text = errorMessage;
                     break;
                 }
 
-                await LoadRangeIntoViewAsync(startRow, startRow + Configuration.AutoLoadRows, cancellationToken);
+                await LoadRangeIntoViewAsync(startRow, startRow + Configuration.AutoLoadRows - 1, cancellationToken);
                 break;
             case 2: // Load between arguments [0] and [1]
                 if (!int.TryParse(arguments[0], out startRow) || !int.TryParse(arguments[1], out var endRow) ||
-                    startRow <= 0 || endRow <= startRow)
+                    startRow <= 0 || endRow < startRow)
                 {
                     StatusTextBlock.Text = errorMessage;
                     break;
@@ -673,7 +674,7 @@ public partial class MainWindow : Window
             
             var rowNumberColumn = new DataGridTextColumn
             {
-                Header = "1",
+                Header = "",
                 Binding = new Binding($"[{Parser.RowNumberKey}]"),
                 SortMemberPath = $"[{Parser.RowNumberKey}]",
                 IsReadOnly = true,
@@ -681,7 +682,7 @@ public partial class MainWindow : Window
             };
             CsvDataGrid.Columns.Add(rowNumberColumn);
             _columnsByName[Parser.RowNumberKey] = rowNumberColumn;
-            _columnsByLetter["1"] = rowNumberColumn;
+            _columnsByLetter[""] = rowNumberColumn;
             for (var i = 0; i < Parser.Headers.Count; i++)
             {
                 var header = Parser.Headers[i];
@@ -704,6 +705,76 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             StatusTextBlock.Text = "Operation canceled.";
+        }
+        finally
+        {
+            if (ReferenceEquals(_commandCancellationTokenSource, cancellationTokenSource))
+                _commandCancellationTokenSource = null;
+
+            SetIsBusy(false);
+        }
+    }
+
+    /// <summary>
+    ///     Exports all visible rows and columns into a csv file.
+    /// </summary>
+    private async void ExportButton_Click(object? sender, RoutedEventArgs e)
+    {
+        var topLevel = GetTopLevel(this);
+        if (topLevel is null || _isBusy || _currentFilePath is null)
+        {
+            return;
+        }
+
+        SetIsBusy(true);
+
+        using var cancellationTokenSource = new CancellationTokenSource();
+        _commandCancellationTokenSource = cancellationTokenSource;
+        var cancellationToken = cancellationTokenSource.Token;
+
+        try
+        {
+            var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "Export CSV",
+                DefaultExtension = "csv",
+                SuggestedFileName = "export.csv",
+                FileTypeChoices =
+                [
+                    new FilePickerFileType("CSV files")
+                    {
+                        Patterns = ["*.csv"]
+                    }
+                ]
+            });
+
+            if (file is null) return;
+
+            StatusTextBlock.Text = "Exporting...";
+
+            // Find visible headers (excluding RowNumberKey)
+            var visibleHeaders = new List<string>();
+            foreach (var header in Parser.Headers)
+            {
+                if (_columnsByName.TryGetValue(header, out var column) && column.IsVisible)
+                {
+                    visibleHeaders.Add(header);
+                }
+            }
+
+            // Visible rows
+            var rowsToExport = _visibleRows.ToList();
+
+            await Parser.ExportToCsvAsync(file.Path.LocalPath, rowsToExport, visibleHeaders, cancellationToken);
+            StatusTextBlock.Text = $"Exported to {file.Name}";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusTextBlock.Text = "Export canceled.";
+        }
+        catch (Exception ex)
+        {
+            StatusTextBlock.Text = $"Export failed: {ex.Message}";
         }
         finally
         {

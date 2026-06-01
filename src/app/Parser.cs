@@ -95,9 +95,6 @@ public class Parser
         return row;
     }
     
-    /// <summary>
-    ///     Reads the first row of the file and stores it as the parser's header collection.
-    /// </summary>
     public async Task ReadHeadersAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) return;
@@ -214,5 +211,34 @@ public class Parser
             matches.Add(match);
         }
         return matches;
+    }
+
+    public async Task ExportToCsvAsync(string filePath, IEnumerable<Dictionary<string, string>> rows, List<string> visibleHeaders, CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested) return;
+        await using var writer = new StreamWriter(filePath, false, Encoding.UTF8);
+
+        // If the first row is data (not header), we should not write header identifier letters (A, B, C...)
+        if (Configuration.FirstRowIsHeader)
+        {
+            await writer.WriteLineAsync(string.Join(",", visibleHeaders.Select(EscapeCsvField)));
+        }
+
+        foreach (var row in rows)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            var values = visibleHeaders.Select(h => row.TryGetValue(h, out var v) ? v : string.Empty);
+            await writer.WriteLineAsync(string.Join(",", values.Select(EscapeCsvField)));
+        }
+    }
+
+    private static string EscapeCsvField(string field)
+    {
+        if (string.IsNullOrEmpty(field)) return string.Empty;
+        if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
+        {
+            return $"\"{field.Replace("\"", "\"\"")}\"";
+        }
+        return field;
     }
 }
