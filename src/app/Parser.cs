@@ -17,25 +17,33 @@ public class Parser
 
     public const string RowNumberKey = "__CsvRowNumber";
     public List<string> Headers { get; private set; } = [];
+    private char _delimiter = ',';
     
     // Constructor methods
-    public static StreamReader BuildReader(string filePath)
+    private static StreamReader BuildReader(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("File path cannot be null or whitespace", nameof(filePath));
-        
-        var reader = File.OpenRead(filePath);
-        if (filePath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+
+        var stream = File.OpenRead(filePath);
+        try
         {
-            return new StreamReader(reader);
+            var patterns = Configuration.CsvFilePatterns.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            if (!patterns.Contains("*" + Path.GetExtension(filePath), StringComparer.OrdinalIgnoreCase))
+                throw new ArgumentException($"Unsupported file format: {Path.GetExtension(filePath)}");
+            if (filePath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+            {
+                return new StreamReader(new GZipStream(stream, CompressionMode.Decompress), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            }
+            return new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         }
-        if (filePath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+        catch
         {
-            return new StreamReader(new GZipStream(reader, CompressionMode.Decompress));
+            stream.Dispose();
+            throw;
         }
-        throw new ArgumentException($"Unsupported file format: {Path.GetExtension(filePath)}");
     }
     
-    private static async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
+    private async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
     {
         if (!File.Exists(filePath))
         {
@@ -50,7 +58,7 @@ public class Parser
         }
     }
     
-    private static List<string> ParseCsvLine(string line)
+    private List<string> ParseCsvLine(string line)
     {
         var fields = new List<string>(Math.Max(1, line.Length / 8));
         var current = new StringBuilder(Math.Min(line.Length, 256));
@@ -60,22 +68,26 @@ public class Parser
         {
             var c = line[i];
 
-            switch (c)
+            if (c == '"')
             {
-                case '"' when inQuotes && i + 1 < line.Length && line[i + 1] == '"':
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
                     current.Append('"');
                     i++;
-                    break;
-                case '"':
+                }
+                else
+                {
                     inQuotes = !inQuotes;
-                    break;
-                case ',' when !inQuotes:
-                    fields.Add(current.ToString());
-                    current.Clear();
-                    break;
-                default:
-                    current.Append(c);
-                    break;
+                }
+            }
+            else if (c == _delimiter && !inQuotes)
+            {
+                fields.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
             }
         }
 
@@ -98,6 +110,21 @@ public class Parser
     public async Task ReadHeadersAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) return;
+
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        if (extension == ".gz")
+        {
+            var fileNameWithoutGz = Path.GetFileNameWithoutExtension(filePath);
+            extension = Path.GetExtension(fileNameWithoutGz).ToLowerInvariant();
+        }
+
+        _delimiter = extension switch
+        {
+            ".tsv" => '\t',
+            ".ssv" => ';',
+            _ => ','
+        };
+
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
 
         if (await enumerator.MoveNextAsync())
@@ -216,26 +243,35 @@ public class Parser
     public async Task ExportToCsvAsync(string filePath, IEnumerable<Dictionary<string, string>> rows, List<string> visibleHeaders, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) return;
+        
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        var delimiter = extension switch
+        {
+            ".tsv" => '\t',
+            ".ssv" => ';',
+            _ => ','
+        };
+        
         await using var writer = new StreamWriter(filePath, false, Encoding.UTF8);
 
         // If the first row is data (not header), we should not write header identifier letters (A, B, C...)
         if (Configuration.FirstRowIsHeader)
         {
-            await writer.WriteLineAsync(string.Join(",", visibleHeaders.Select(EscapeCsvField)));
+            await writer.WriteLineAsync(string.Join(delimiter.ToString(), visibleHeaders.Select(h => EscapeCsvField(h, delimiter))));
         }
 
         foreach (var row in rows)
         {
             if (cancellationToken.IsCancellationRequested) return;
             var values = visibleHeaders.Select(h => row.TryGetValue(h, out var v) ? v : string.Empty);
-            await writer.WriteLineAsync(string.Join(",", values.Select(EscapeCsvField)));
+            await writer.WriteLineAsync(string.Join(delimiter.ToString(), values.Select(v => EscapeCsvField(v, delimiter))));
         }
     }
 
-    private static string EscapeCsvField(string field)
+    private static string EscapeCsvField(string field, char delimiter)
     {
         if (string.IsNullOrEmpty(field)) return string.Empty;
-        if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
+        if (field.Contains(delimiter) || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
         {
             return $"\"{field.Replace("\"", "\"\"")}\"";
         }

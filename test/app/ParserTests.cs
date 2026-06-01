@@ -216,6 +216,66 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     */
 
 
+    [Fact]
+    public async Task TestReadTsv()
+    {
+        var sourcePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".tsv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(sourcePath,
+            [
+                "Header1\tHeader2\tHeader3",
+                "val1\tval2\tval3",
+                "val4\t\"quoted\tval\"\tval6"
+            ]);
+
+            await _parser.ReadHeadersAsync(sourcePath);
+            Assert.Equal(3, _parser.Headers.Count);
+            Assert.Equal("Header2", _parser.Headers[1]);
+
+            var rows = await _parser.ReadRangeAsync(sourcePath, 1, 10);
+            Assert.Equal(2, rows.Count);
+            Assert.Equal("val1", rows[0]["Header1"]);
+            Assert.Equal("quoted\tval", rows[1]["Header2"]);
+            Assert.Equal("val6", rows[1]["Header3"]);
+        }
+        finally
+        {
+            if (File.Exists(sourcePath)) File.Delete(sourcePath);
+        }
+    }
+
+    [Fact]
+    public async Task TestReadSsv()
+    {
+        var sourcePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".ssv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(sourcePath,
+            [
+                "Header1;Header2;Header3",
+                "val1;val2;val3",
+                "val4;\"quoted;val\";val6"
+            ]);
+
+            await _parser.ReadHeadersAsync(sourcePath);
+            Assert.Equal(3, _parser.Headers.Count);
+            Assert.Equal("Header2", _parser.Headers[1]);
+
+            var rows = await _parser.ReadRangeAsync(sourcePath, 1, 10);
+            Assert.Equal(2, rows.Count);
+            Assert.Equal("val1", rows[0]["Header1"]);
+            Assert.Equal("quoted;val", rows[1]["Header2"]);
+            Assert.Equal("val6", rows[1]["Header3"]);
+        }
+        finally
+        {
+            if (File.Exists(sourcePath)) File.Delete(sourcePath);
+        }
+    }
+
     private class MockProgress(Action<int> callback) : IProgress<int>
     {
         public void Report(int value) => callback(value);
@@ -383,6 +443,29 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         finally
         {
             if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
+    [Fact]
+    public void TestCsvFilePatternsSplit()
+    {
+        var oldPatterns = Configuration.GetRawValue(nameof(Configuration.CsvFilePatterns));
+        try
+        {
+            // Test with semicolon (app.config style)
+            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv" } });
+            
+            var filePath = "test.tsv";
+            var patterns = Configuration.CsvFilePatterns.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            Assert.Contains("*" + Path.GetExtension(filePath), patterns, StringComparer.OrdinalIgnoreCase);
+
+            // Test with comma (default Configuration.cs style)
+            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CsvFilePatterns), "*.csv,*.gz,*.ssv,*.tsv" } });
+            patterns = Configuration.CsvFilePatterns.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            Assert.Contains("*" + Path.GetExtension(filePath), patterns, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CsvFilePatterns), oldPatterns } });
         }
     }
 }

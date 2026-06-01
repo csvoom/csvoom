@@ -40,7 +40,7 @@ public static class Configuration
 
     // Strings
     public static string CsvFilePatterns =>
-        GetString(nameof(CsvFilePatterns), "*.csv;*.gz"); // File patterns to match CSV files
+        GetString(nameof(CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv"); // File patterns to match CSV files
 
     public static IReadOnlyList<ConfigurationSetting> Settings { get; } =
     [
@@ -57,7 +57,7 @@ public static class Configuration
         new(nameof(CreateColumnHeaders), "Boolean", "true", "Whether to move the first row into column headers."),
         new(nameof(CreateRowNumbers), "Boolean", "true", "Whether to add an automatic numbers column."),
         new(nameof(FirstRowIsHeader), "Boolean", "true", "Whether to treat the first row as a header."),
-        new(nameof(CsvFilePatterns), "String", "*.csv;*.gz", "File patterns to match CSV files.")
+        new(nameof(CsvFilePatterns), "String", "*.csv;*.gz;*.ssv;*.tsv", "File patterns to match CSV files.")
     ];
 
     public static string GetRawValue(string key)
