@@ -522,7 +522,7 @@ public partial class MainWindow : Window
             CsvDataGrid.Columns[i].IsVisible = false;
         }
         StatusTextBlock.Text =
-            $"Hidden columns: {GetColumnLetter(ToDataColumnIndex(startIndex))} -> {GetColumnLetter(ToDataColumnIndex(endIndex))}.";
+            $"Hidden columns: {Parser.GetColumnLetter(ToDataColumnIndex(startIndex))} -> {Parser.GetColumnLetter(ToDataColumnIndex(endIndex))}.";
     }
 
     /// <summary>
@@ -685,7 +685,7 @@ public partial class MainWindow : Window
             for (var i = 0; i < Parser.Headers.Count; i++)
             {
                 var header = Parser.Headers[i];
-                var columnLetter = GetColumnLetter(i);
+                var columnLetter = Parser.GetColumnLetter(i);
                 var column = new DataGridTextColumn
                 {
                     Header = $"{columnLetter}: {header}",
@@ -824,22 +824,6 @@ public partial class MainWindow : Window
         _isBusy = toStatus;
     }
 
-    /// <summary>
-    ///     Converts a zero-based data column index into its spreadsheet-style column letter.
-    /// </summary>
-    private static string GetColumnLetter(int columnIndex)
-    {
-        var letter = string.Empty;
-        columnIndex++;
-        while (columnIndex > 0)
-        {
-            columnIndex--;
-            letter = (char)('A' + columnIndex % 26) + letter;
-            columnIndex /= 26;
-        }
-
-        return letter;
-    }
 
     /// <summary>
     ///     Finds a data grid column by its display name or spreadsheet-style column letter.

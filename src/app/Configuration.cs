@@ -35,6 +35,9 @@ public static class Configuration
     public static bool CreateRowNumbers =>
         GetBool(nameof(CreateRowNumbers), true); // Whether to add an automatic numbers column
 
+    public static bool FirstRowIsHeader =>
+        GetBool(nameof(FirstRowIsHeader), true); // Whether to treat the first row as a header
+
     // Strings
     public static string CsvFilePatterns =>
         GetString(nameof(CsvFilePatterns), "*.csv;*.gz"); // File patterns to match CSV files
@@ -53,6 +56,7 @@ public static class Configuration
         new(nameof(ShowCommandExamples), "Boolean", "true", "Whether to show examples for command usage."),
         new(nameof(CreateColumnHeaders), "Boolean", "true", "Whether to move the first row into column headers."),
         new(nameof(CreateRowNumbers), "Boolean", "true", "Whether to add an automatic numbers column."),
+        new(nameof(FirstRowIsHeader), "Boolean", "true", "Whether to treat the first row as a header."),
         new(nameof(CsvFilePatterns), "String", "*.csv;*.gz", "File patterns to match CSV files.")
     ];
 

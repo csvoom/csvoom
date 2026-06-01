@@ -105,28 +105,59 @@ public class Parser
 
         if (await enumerator.MoveNextAsync())
         {
-            Headers = ParseCsvLine(enumerator.Current);
+            var firstRow = ParseCsvLine(enumerator.Current);
+            if (Configuration.FirstRowIsHeader)
+            {
+                Headers = firstRow;
+            }
+            else
+            {
+                Headers = new List<string>(firstRow.Count);
+                for (var i = 0; i < firstRow.Count; i++)
+                {
+                    Headers.Add(GetColumnLetter(i));
+                }
+            }
         }
         else
         {
             Headers = [];
         }
     }
+
+    /// <summary>
+    ///     Converts a zero-based data column index into its spreadsheet-style column letter.
+    /// </summary>
+    public static string GetColumnLetter(int columnIndex)
+    {
+        var letter = string.Empty;
+        columnIndex++;
+        while (columnIndex > 0)
+        {
+            columnIndex--;
+            letter = (char)('A' + columnIndex % 26) + letter;
+            columnIndex /= 26;
+        }
+
+        return letter;
+    }
     
     public async IAsyncEnumerable<Dictionary<string, string>> ReadRangeAsyncEnumerable(string filePath, int startRow, int endRow, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
         // Variables
-        var currentRowNumber = 1;
+        var currentRowNumber = 0;
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
         
         // Exception prevention
-        if (startRow <= 0 || endRow < startRow || !await enumerator.MoveNextAsync()) yield break;
+        if (startRow <= 0 || endRow < startRow) yield break;
 
         // Processing
         while (await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
         {
             currentRowNumber++;
+            if (currentRowNumber == 1 && Configuration.FirstRowIsHeader) continue;
+            
             if (currentRowNumber < startRow) continue;
             if (currentRowNumber > endRow) break;
             yield return BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
@@ -149,7 +180,7 @@ public class Parser
         // Variables
         var headers = headersToSearch ?? Headers.Prepend(RowNumberKey);
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
-        var currentRowNumber = 1;
+        var currentRowNumber = 0;
         var matchCount = 0;
         
         // Exception prevention
@@ -157,11 +188,11 @@ public class Parser
         if (enumerable.Count == 0) yield break;
         
         // Processing
-        if (!await enumerator.MoveNextAsync()) yield break;
-
         while (matchCount < maxMatches && await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
         {
             currentRowNumber++;
+            if (currentRowNumber == 1 && Configuration.FirstRowIsHeader) continue;
+
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
             var foundInThisRow = false;
             foreach (var header in enumerable.TakeWhile(header => matchCount < maxMatches))

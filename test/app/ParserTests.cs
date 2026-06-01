@@ -238,4 +238,47 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
+
+    [Fact]
+    public async Task TestFirstRowAsData()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "Alice,London",
+                "Bob,Paris"
+            ]);
+
+            // Set configuration to treat first row as data
+            var oldVal = Configuration.GetRawValue(nameof(Configuration.FirstRowIsHeader));
+            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.FirstRowIsHeader), "false" } });
+
+            try
+            {
+                var rows = await _parser.ReadRangeAsync(filePath, 1, 2);
+
+                Assert.Equal(2, rows.Count);
+                Assert.Equal("Alice", rows[0]["A"]);
+                Assert.Equal("London", rows[0]["B"]);
+                Assert.Equal("1", rows[0][Parser.RowNumberKey]);
+                
+                Assert.Equal("Bob", rows[1]["A"]);
+                Assert.Equal("Paris", rows[1]["B"]);
+                Assert.Equal("2", rows[1][Parser.RowNumberKey]);
+            }
+            finally
+            {
+                Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.FirstRowIsHeader), oldVal } });
+            }
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
 }
