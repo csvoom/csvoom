@@ -295,7 +295,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var parts = commandText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var parts = Commands.SplitCommand(commandText.Trim());
             var command = parts[0];
             var arguments = parts[1..];
             if (arguments.Length == 0)
@@ -304,7 +304,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            bool isValid = false;
+            var isValid = false;
             if (command.Equals("load", StringComparison.OrdinalIgnoreCase))
             {
                 await Command_LoadAsync(arguments, cancellationToken);
