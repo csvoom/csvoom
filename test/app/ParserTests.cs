@@ -35,11 +35,11 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var rows = await _parser.ReadRangeAsync(filePath, 2, 4);
 
             Assert.Equal(3, rows.Count);
-            Assert.Equal("1", rows[0]["value"]);
-            Assert.Equal("2", rows[1]["value"]);
-            Assert.Equal("3", rows[2]["value"]);
-            Assert.Equal("2", rows[0][Parser.RowNumberKey]);
-            Assert.Equal("4", rows[2][Parser.RowNumberKey]);
+            Assert.Equal("1", rows[0][0]);
+            Assert.Equal("2", rows[1][0]);
+            Assert.Equal("3", rows[2][0]);
+            Assert.Equal(2, rows[0].RowNumber);
+            Assert.Equal(4, rows[2].RowNumber);
         }
         finally
         {
@@ -157,12 +157,13 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
 
         try
         {
-            var rows = new List<Dictionary<string, string>>
+            var rows = new List<CsvRow>
             {
-                new() { ["H1"] = "val with , comma", ["H2"] = "val with \" quotes" },
-                new() { ["H1"] = "val with\nnewline", ["H2"] = "normal" }
+                new(["val with , comma", "val with \" quotes"], 1),
+                new(["val with\nnewline", "normal"], 2)
             };
             var visibleHeaders = new List<string> { "H1", "H2" };
+            _parser.Headers.AddRange(["H1", "H2"]);
 
             // Configuration.FirstRowIsHeader is true by default
             await _parser.ExportToCsvAsync(exportPath, rows, visibleHeaders);
@@ -236,9 +237,9 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
 
             var rows = await _parser.ReadRangeAsync(sourcePath, 1, 10);
             Assert.Equal(2, rows.Count);
-            Assert.Equal("val1", rows[0]["Header1"]);
-            Assert.Equal("quoted\tval", rows[1]["Header2"]);
-            Assert.Equal("val6", rows[1]["Header3"]);
+            Assert.Equal("val1", rows[0][0]);
+            Assert.Equal("quoted\tval", rows[1][1]);
+            Assert.Equal("val6", rows[1][2]);
         }
         finally
         {
@@ -266,9 +267,9 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
 
             var rows = await _parser.ReadRangeAsync(sourcePath, 1, 10);
             Assert.Equal(2, rows.Count);
-            Assert.Equal("val1", rows[0]["Header1"]);
-            Assert.Equal("quoted;val", rows[1]["Header2"]);
-            Assert.Equal("val6", rows[1]["Header3"]);
+            Assert.Equal("val1", rows[0][0]);
+            Assert.Equal("quoted;val", rows[1][1]);
+            Assert.Equal("val6", rows[1][2]);
         }
         finally
         {
@@ -331,8 +332,8 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var rows = await _parser.ReadRangeAsync(filePath, 1, 2);
 
             Assert.Single(rows);
-            Assert.Equal("2", rows[0][Parser.RowNumberKey]);
-            Assert.Equal("Alice", rows[0]["name"]);
+            Assert.Equal(2, rows[0].RowNumber);
+            Assert.Equal("Alice", rows[0][0]);
         }
         finally
         {
@@ -359,8 +360,8 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var rows = await _parser.ReadRangeAsync(filePath, 2, 3);
 
             Assert.Equal(2, rows.Count);
-            Assert.Equal("1", rows[0]["value"]);
-            Assert.Equal("2", rows[1]["value"]);
+            Assert.Equal("1", rows[0][0]);
+            Assert.Equal("2", rows[1][0]);
         }
         finally
         {
@@ -386,11 +387,11 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var rows = await _parser.ReadRangeAsync(filePath, 100, 102);
 
             Assert.Equal(3, rows.Count);
-            Assert.Equal("row-100", rows[0]["value"]);
-            Assert.Equal("row-101", rows[1]["value"]);
-            Assert.Equal("row-102", rows[2]["value"]);
-            Assert.Equal("100", rows[0][Parser.RowNumberKey]);
-            Assert.Equal("102", rows[2][Parser.RowNumberKey]);
+            Assert.Equal("row-100", rows[0][0]);
+            Assert.Equal("row-101", rows[1][0]);
+            Assert.Equal("row-102", rows[2][0]);
+            Assert.Equal(100, rows[0].RowNumber);
+            Assert.Equal(102, rows[2].RowNumber);
         }
         finally
         {
@@ -422,13 +423,13 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 var rows = await _parser.ReadRangeAsync(filePath, 1, 2);
 
                 Assert.Equal(2, rows.Count);
-                Assert.Equal("Alice", rows[0]["A"]);
-                Assert.Equal("London", rows[0]["B"]);
-                Assert.Equal("1", rows[0][Parser.RowNumberKey]);
+                Assert.Equal("Alice", rows[0][0]);
+                Assert.Equal("London", rows[0][1]);
+                Assert.Equal(1, rows[0].RowNumber);
 
-                Assert.Equal("Bob", rows[1]["A"]);
-                Assert.Equal("Paris", rows[1]["B"]);
-                Assert.Equal("2", rows[1][Parser.RowNumberKey]);
+                Assert.Equal("Bob", rows[1][0]);
+                Assert.Equal("Paris", rows[1][1]);
+                Assert.Equal(2, rows[1].RowNumber);
             }
             finally
             {

@@ -11,26 +11,48 @@ using System.Threading.Tasks;
 
 namespace CSVoom.app;
 
+public class CsvRow(string[] values, int rowNumber)
+{
+    public string[] Values { get; } = values;
+    public int RowNumber { get; } = rowNumber;
+
+    public string this[int index] => index >= 0 && index < Values.Length ? Values[index] : string.Empty;
+
+    public string this[string key, List<string> headers]
+    {
+        get
+        {
+            if (key == Parser.RowNumberKey) return RowNumber.ToString();
+            var index = headers.IndexOf(key);
+            return index >= 0 && index < Values.Length ? Values[index] : string.Empty;
+        }
+    }
+}
+
 public class Parser
 {
     // Variables & applied objects
 
     public const string RowNumberKey = "__CsvRowNumber";
     private char _delimiter = ',';
+    private string[] _csvFilePatterns = [];
     public List<string> Headers { get; private set; } = [];
 
     // Constructor methods
-    private static StreamReader BuildReader(string filePath)
+    private StreamReader BuildReader(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("File path cannot be null or whitespace", nameof(filePath));
 
+        if (_csvFilePatterns.Length == 0)
+        {
+            _csvFilePatterns = Configuration.CsvFilePatterns.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries);
+        }
+
         var stream = File.OpenRead(filePath);
         try
         {
-            var patterns =
-                Configuration.CsvFilePatterns.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries);
-            if (!patterns.Contains("*" + Path.GetExtension(filePath), StringComparer.OrdinalIgnoreCase))
+            if (!_csvFilePatterns.Contains("*" + Path.GetExtension(filePath), StringComparer.OrdinalIgnoreCase))
                 throw new ArgumentException($"Unsupported file format: {Path.GetExtension(filePath)}");
             if (filePath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
                 return new StreamReader(new GZipStream(stream, CompressionMode.Decompress), Encoding.UTF8, true);
@@ -56,19 +78,25 @@ public class Parser
 
     private List<string> ParseCsvLine(string line)
     {
-        var fields = new List<string>(Math.Max(1, line.Length / 8));
-        var current = new StringBuilder(Math.Min(line.Length, 256));
-        var inQuotes = false;
-
-        for (var i = 0; i < line.Length; i++)
+        var fields = new List<string>(Headers.Count > 0 ? Headers.Count : Math.Max(1, line.Length / 8));
+        if (line.Length == 0)
         {
-            var c = line[i];
+            fields.Add(string.Empty);
+            return fields;
+        }
+
+        var lineSpan = line.AsSpan();
+        var inQuotes = false;
+        var start = 0;
+
+        for (var i = 0; i < lineSpan.Length; i++)
+        {
+            var c = lineSpan[i];
 
             if (c == '"')
             {
-                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                if (inQuotes && i + 1 < lineSpan.Length && lineSpan[i + 1] == '"')
                 {
-                    current.Append('"');
                     i++;
                 }
                 else
@@ -78,29 +106,46 @@ public class Parser
             }
             else if (c == _delimiter && !inQuotes)
             {
-                fields.Add(current.ToString());
-                current.Clear();
-            }
-            else
-            {
-                current.Append(c);
+                fields.Add(UnescapeField(lineSpan[start..i]));
+                start = i + 1;
             }
         }
 
-        fields.Add(current.ToString());
+        fields.Add(UnescapeField(lineSpan[start..]));
         return fields;
     }
 
-    private Dictionary<string, string> BuildRow(List<string> values, int rowNumber)
+    private static string UnescapeField(ReadOnlySpan<char> field)
     {
-        var row = new Dictionary<string, string>(Headers.Count + 1)
+        if (field.Length == 0) return string.Empty;
+        if (field[0] == '"' && field[^1] == '"')
         {
-            [RowNumberKey] = rowNumber.ToString()
-        };
+            field = field[1..^1];
+            if (field.IndexOf('"') == -1) return field.ToString();
 
-        for (var i = 0; i < Headers.Count; i++) row[Headers[i]] = i < values.Count ? values[i] : string.Empty;
+            var sb = new StringBuilder(field.Length);
+            for (var i = 0; i < field.Length; i++)
+            {
+                if (field[i] == '"' && i + 1 < field.Length && field[i + 1] == '"')
+                {
+                    sb.Append('"');
+                    i++;
+                }
+                else
+                {
+                    sb.Append(field[i]);
+                }
+            }
 
-        return row;
+            return sb.ToString();
+        }
+
+        return field.ToString();
+    }
+
+    private CsvRow BuildRow(List<string> values, int rowNumber)
+    {
+        return new CsvRow([..values], rowNumber);
     }
 
     public async Task ReadHeadersAsync(string filePath, CancellationToken cancellationToken = default)
@@ -159,7 +204,7 @@ public class Parser
         return letter;
     }
 
-    public async IAsyncEnumerable<Dictionary<string, string>> ReadRangeAsyncEnumerable(string filePath, int startRow,
+    public async IAsyncEnumerable<CsvRow> ReadRangeAsyncEnumerable(string filePath, int startRow,
         int endRow, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
@@ -182,30 +227,29 @@ public class Parser
         }
     }
 
-    public async Task<ObservableCollection<Dictionary<string, string>>> ReadRangeAsync(string filePath, int startRow,
+    public async Task<ObservableCollection<CsvRow>> ReadRangeAsync(string filePath, int startRow,
         int endRow, CancellationToken cancellationToken = default)
     {
-        var rows = new ObservableCollection<Dictionary<string, string>>();
+        var rows = new ObservableCollection<CsvRow>();
         await foreach (var row in ReadRangeAsyncEnumerable(filePath, startRow, endRow, cancellationToken))
             rows.Add(row);
         return rows;
     }
 
-    public async IAsyncEnumerable<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>
+    public async IAsyncEnumerable<(CsvRow Row, string Header, string Value, int RowNumber)>
         ReadMatchesAsyncEnumerable(string filePath, Func<string, bool> matcher, List<string>? headersToSearch,
             int maxMatches, IProgress<int>? progress = null,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
         // Variables
-        var headers = headersToSearch ?? Headers.Prepend(RowNumberKey);
+        var headers = headersToSearch ?? Headers.Prepend(RowNumberKey).ToList();
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
         var currentRowNumber = 0;
         var matchCount = 0;
 
         // Exception prevention
-        var enumerable = headers.ToList();
-        if (enumerable.Count == 0) yield break;
+        if (headers.Count == 0) yield break;
 
         // Processing
         while (matchCount < maxMatches && await enumerator.MoveNextAsync() &&
@@ -216,9 +260,10 @@ public class Parser
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
             var foundInThisRow = false;
-            foreach (var header in enumerable.TakeWhile(header => matchCount < maxMatches))
+            foreach (var header in headers.TakeWhile(header => matchCount < maxMatches))
             {
-                if (!row.TryGetValue(header, out var value) || !matcher(value)) continue;
+                var value = row[header, Headers];
+                if (!matcher(value)) continue;
                 matchCount++;
                 foundInThisRow = true;
                 yield return (row, header, value, currentRowNumber);
@@ -228,17 +273,17 @@ public class Parser
         }
     }
 
-    public async Task<List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>>
+    public async Task<List<(CsvRow Row, string Header, string Value, int RowNumber)>>
         ReadMatchesAsync(string filePath, Func<string, bool> matcher, List<string>? headersToSearch, int maxMatches,
             IProgress<int>? progress = null, CancellationToken cancellationToken = default)
     {
-        var matches = new List<(Dictionary<string, string> Row, string Header, string Value, int RowNumber)>();
+        var matches = new List<(CsvRow Row, string Header, string Value, int RowNumber)>();
         await foreach (var match in ReadMatchesAsyncEnumerable(filePath, matcher, headersToSearch, maxMatches, progress,
                            cancellationToken)) matches.Add(match);
         return matches;
     }
 
-    public async Task ExportToCsvAsync(string filePath, IEnumerable<Dictionary<string, string>> rows,
+    public async Task ExportToCsvAsync(string filePath, IEnumerable<CsvRow> rows,
         List<string> visibleHeaders, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) return;
@@ -261,7 +306,7 @@ public class Parser
         foreach (var row in rows)
         {
             if (cancellationToken.IsCancellationRequested) return;
-            var values = visibleHeaders.Select(h => row.TryGetValue(h, out var v) ? v : string.Empty);
+            var values = visibleHeaders.Select(h => row[h, Headers]);
             await writer.WriteLineAsync(string.Join(delimiter.ToString(),
                 values.Select(v => EscapeCsvField(v, delimiter))));
         }

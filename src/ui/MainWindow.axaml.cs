@@ -44,7 +44,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<string> _commandHistory = [];
     private readonly Dictionary<string, string> _editedSettings = new(StringComparer.OrdinalIgnoreCase);
     private readonly DataGridCollectionView _gridView;
-    private readonly ObservableCollection<Dictionary<string, string>> _visibleRows = [];
+    private readonly ObservableCollection<CsvRow> _visibleRows = [];
     private CancellationTokenSource? _commandCancellationTokenSource = new();
 
     private string? _currentFileName;
@@ -198,8 +198,7 @@ public partial class MainWindow : Window
         }
 
         // Check if row is already loaded
-        var rowInView = _visibleRows.FirstOrDefault(r =>
-            r.TryGetValue(Parser.RowNumberKey, out var val) && int.TryParse(val, out var num) && num == targetRow);
+        var rowInView = _visibleRows.FirstOrDefault(r => r.RowNumber == targetRow);
 
         if (rowInView != null)
             ScrollToMatch(rowInView, targetHeader);
@@ -218,8 +217,7 @@ public partial class MainWindow : Window
         }
 
         var rowNumbers = _visibleRows
-            .Select(r =>
-                r.TryGetValue(Parser.RowNumberKey, out var val) && int.TryParse(val, out var num) ? num : (int?)null)
+            .Select(r => (int?)r.RowNumber)
             .Where(n => n.HasValue)
             .Select(n => n!.Value)
             .ToList();
@@ -230,6 +228,7 @@ public partial class MainWindow : Window
             var max = rowNumbers.Max();
             NavigateRowNumeric.Minimum = min;
             NavigateRowNumeric.Maximum = max;
+            NavigateRowNumeric.Increment = -1;
             // Snap current value to range if needed
             if (NavigateRowNumeric.Value < min) NavigateRowNumeric.Value = min;
             if (NavigateRowNumeric.Value > max) NavigateRowNumeric.Value = max;
@@ -430,7 +429,7 @@ public partial class MainWindow : Window
 
             _visibleRows.Clear();
             var foundResults = new ObservableCollection<FindResult>();
-            var rowsToShow = new HashSet<Dictionary<string, string>>(ReferenceEqualityComparer.Instance);
+            var rowsToShow = new HashSet<CsvRow>();
 
 
             await foreach (var match in Parser.ReadMatchesAsyncEnumerable(
@@ -635,8 +634,8 @@ public partial class MainWindow : Window
             var rowNumberColumn = new DataGridTextColumn
             {
                 Header = "",
-                Binding = new Binding($"[{Parser.RowNumberKey}]"),
-                SortMemberPath = $"[{Parser.RowNumberKey}]",
+                Binding = new Binding("RowNumber"),
+                SortMemberPath = "RowNumber",
                 IsReadOnly = true,
                 CanUserSort = false
             };
@@ -650,8 +649,8 @@ public partial class MainWindow : Window
                 var column = new DataGridTextColumn
                 {
                     Header = $"{columnLetter}: {header}",
-                    Binding = new Binding($"[{header}]"),
-                    SortMemberPath = $"[{header}]"
+                    Binding = new Binding($"Values[{i}]"),
+                    SortMemberPath = $"Values[{i}]"
                 };
                 CsvDataGrid.Columns.Add(column);
                 _columnsByName[header] = column;
@@ -754,7 +753,7 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Scrolls the data grid to the supplied row and column, making the column visible first.
     /// </summary>
-    private void ScrollToMatch(Dictionary<string, string>? row, string header, string? columnLetter = null)
+    private void ScrollToMatch(CsvRow? row, string header, string? columnLetter = null)
     {
         var column = header == Parser.RowNumberKey
             ? CsvDataGrid.Columns[0]
@@ -777,7 +776,7 @@ public partial class MainWindow : Window
         CsvDataGrid.Focus();
     }
 
-    private bool VisibleRowsContainsReference(Dictionary<string, string> row)
+    private bool VisibleRowsContainsReference(CsvRow row)
     {
         return _visibleRows.Any(visibleRow => ReferenceEquals(visibleRow, row));
     }
@@ -803,18 +802,22 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
             _visibleRows.Clear();
             var rowCount = 0;
+            var batch = new List<CsvRow>();
             await foreach (var row in Parser.ReadRangeAsyncEnumerable(_currentFilePath, startRow, endRow,
                                cancellationToken))
             {
-                _visibleRows.Add(row);
+                batch.Add(row);
                 rowCount++;
                 if (rowCount % 100 == 0)
                 {
                     StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}... Loaded {rowCount:N0} rows.";
+                    foreach (var r in batch) _visibleRows.Add(r);
+                    batch.Clear();
                     _gridView.Refresh();
                 }
             }
 
+            foreach (var r in batch) _visibleRows.Add(r);
             _gridView.Refresh();
             UpdateNavigationRange();
 
@@ -1016,7 +1019,7 @@ public partial class MainWindow : Window
 
     private sealed class FindResult
     {
-        public required Dictionary<string, string>? Row { get; init; }
+        public required CsvRow Row { get; init; }
 
         public required string Header { get; init; }
         public required string Value { get; init; }
