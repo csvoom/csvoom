@@ -276,12 +276,11 @@ public partial class MainWindow : Window
     // Commands
 
     /// <summary>
-    ///     Parses and executes a command entered by the user.
+    /// Executes a command entered by the user.
     /// </summary>
     private async Task ExecuteCommandAsync(string commandText)
     {
-        if (string.IsNullOrWhiteSpace(commandText) || CsvDataGrid.Columns.Count == 0 || _isBusy ||
-            _currentFilePath == null) return;
+        if (string.IsNullOrWhiteSpace(commandText) || CsvDataGrid.Columns.Count == 0 || _isBusy || _currentFilePath == null) return;
 
         CloseInlinePanel();
         SetIsBusy(true);
@@ -301,30 +300,17 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var isValid = false;
-            if (command.Equals("load", StringComparison.OrdinalIgnoreCase))
+            var isValid = true;
+            switch (command.ToLowerInvariant())
             {
-                await Command_LoadAsync(arguments, cancellationToken);
-                isValid = true;
-            }
-            else if (command.Equals("find", StringComparison.OrdinalIgnoreCase))
-            {
-                await Command_FindAsync(arguments, cancellationToken);
-                isValid = true;
-            }
-            else if (command.Equals("hide", StringComparison.OrdinalIgnoreCase))
-            {
-                Command_SetVisibility(arguments, false, cancellationToken);
-                isValid = true;
-            }
-            else if (command.Equals("unhide", StringComparison.OrdinalIgnoreCase))
-            {
-                Command_SetVisibility(arguments, true, cancellationToken);
-                isValid = true;
-            }
-            else
-            {
-                StatusTextBlock.Text = $"Unknown command: {command}";
+                case "load": await Command_LoadAsync(arguments, cancellationToken); break;
+                case "find": await Command_FindAsync(arguments, cancellationToken); break;
+                case "hide": Command_SetVisibility(arguments, false, cancellationToken); break;
+                case "unhide": Command_SetVisibility(arguments, true, cancellationToken); break;
+                default:
+                    StatusTextBlock.Text = $"Unknown command: {command}";
+                    isValid = false;
+                    break;
             }
 
             if (isValid) LogCommand(commandText.Trim());
@@ -482,7 +468,7 @@ public partial class MainWindow : Window
     private void Command_SetVisibility(string[] arguments, bool state, CancellationToken cancellationToken)
     {
         var errorMessage =
-            $"Error {(state ? "Hiding":"Showing")} columns. Please check your input and try again.";
+            $"Error {(state ? "Showing":"Hiding")} columns. Please check your input and try again.";
         var startIndex = 1;
         var endIndex = CsvDataGrid.Columns.Count;
         if (arguments.Length is < 1 or > 2)
@@ -525,7 +511,7 @@ public partial class MainWindow : Window
         }
 
         StatusTextBlock.Text =
-            $"{(state ? "Hiding" : "Showing")} columns: {Parser.GetColumnLetter(ToDataColumnIndex(startIndex))} -> {Parser.GetColumnLetter(ToDataColumnIndex(endIndex))}.";
+            $"{(state ? "Showing":"Hiding")} column(s): {Parser.GetColumnLetter(ToDataColumnIndex(startIndex))} -> {Parser.GetColumnLetter(ToDataColumnIndex(endIndex))}.";
     }
 
     // UI interaction
@@ -808,13 +794,11 @@ public partial class MainWindow : Window
             {
                 batch.Add(row);
                 rowCount++;
-                if (rowCount % 100 == 0)
-                {
-                    StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}... Loaded {rowCount:N0} rows.";
-                    foreach (var r in batch) _visibleRows.Add(r);
-                    batch.Clear();
-                    _gridView.Refresh();
-                }
+                if (rowCount % 100 != 0) continue;
+                StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}... Loaded {rowCount:N0} rows.";
+                foreach (var r in batch) _visibleRows.Add(r);
+                batch.Clear();
+                _gridView.Refresh();
             }
 
             foreach (var r in batch) _visibleRows.Add(r);
@@ -838,9 +822,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    ///     Convenience method to set the status of the UI
+    /// Sets the UI to busy state or available state.
     /// </summary>
-    /// <param name="toStatus">Sets the UI to busy state if true, sets to available state if false</param>
     private void SetIsBusy(bool toStatus)
     {
         RunButton.Content = toStatus ? "Cancel" : "Run";
@@ -850,27 +833,20 @@ public partial class MainWindow : Window
 
 
     /// <summary>
-    ///     Finds a data grid column by its display name or spreadsheet-style column letter.
+    /// Finds a data grid column by its display name or letter.
     /// </summary>
-    /// <param name="searchValue">Value to search by</param>
-    /// <returns></returns>
     private DataGridColumn? FindColumnByNameOrLetter(string searchValue)
     {
         if (string.IsNullOrWhiteSpace(searchValue)) return null;
 
-        var normalizedSearchValue = searchValue.Trim();
+        var normalized = searchValue.Trim();
 
-        // Exact match first
-        if (_columnsByName.TryGetValue(normalizedSearchValue, out var columnByName)) return columnByName;
+        if (_columnsByName.TryGetValue(normalized, out var column)) return column;
 
-        // Case-insensitive name match
-        var caseInsensitiveMatch = _columnsByName.FirstOrDefault(kvp =>
-            kvp.Key.Equals(normalizedSearchValue, StringComparison.OrdinalIgnoreCase)).Value;
-
+        var caseInsensitiveMatch = _columnsByName.FirstOrDefault(kvp => kvp.Key.Equals(normalized, StringComparison.OrdinalIgnoreCase)).Value;
         if (caseInsensitiveMatch is not null) return caseInsensitiveMatch;
 
-        var upperSearchValue = normalizedSearchValue.ToUpperInvariant();
-        return _columnsByLetter.GetValueOrDefault(upperSearchValue);
+        return _columnsByLetter.GetValueOrDefault(normalized.ToUpperInvariant());
     }
 
     /// <summary>
