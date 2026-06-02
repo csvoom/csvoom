@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Runtime.ExceptionServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 
@@ -8,7 +9,7 @@ namespace CSVoom;
 
 internal abstract class Program
 {
-    private static readonly object LogLock = new();
+    private static readonly Lock LogLock = new();
 
     private static readonly string ErrorLogPath = Path.Combine(
         AppContext.BaseDirectory,
@@ -55,9 +56,6 @@ internal abstract class Program
 
     // Avalonia configuration, don't remove; also used by visual designer.
     private static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
-#if DEBUG
-        .WithDeveloperTools()
-#endif
         .UsePlatformDetect()
         .WithInterFont()
         .LogToTrace();

@@ -98,12 +98,12 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
 
             // Search for "London" which appears twice
             var matches = await _parser.ReadMatchesAsync(filePath,
-                s => s.Equals("London", StringComparison.OrdinalIgnoreCase), null, 100, progress: progress);
+                s => s.Equals("London", StringComparison.OrdinalIgnoreCase), null, 100, progress);
 
             // Wait a bit for Progress<T> to dispatch (it uses SynchronizationContext or ThreadPool)
             // In a unit test without a SynchronizationContext, it might be immediate or on ThreadPool.
             // Actually Progress<int> in tests might be tricky. Let's use a custom IProgress.
-            
+
             Assert.Equal(2, matches.Count);
         }
         finally
@@ -174,7 +174,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             // 2: "val with , comma","val with "" quotes"
             // 3: "val with
             // 4: newline",normal
-            Assert.Equal(4, exportedLines.Length); 
+            Assert.Equal(4, exportedLines.Length);
             Assert.Equal("H1,H2", exportedLines[0]);
             Assert.Equal("\"val with , comma\",\"val with \"\" quotes\"", exportedLines[1]);
         }
@@ -276,11 +276,6 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
     }
 
-    private class MockProgress(Action<int> callback) : IProgress<int>
-    {
-        public void Report(int value) => callback(value);
-    }
-
     [Fact]
     public async Task TestReadMatchesReportsProgressImmediate()
     {
@@ -302,7 +297,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var progress = new MockProgress(count => progressCounts.Add(count));
 
             await _parser.ReadMatchesAsync(filePath,
-                s => s.Equals("London", StringComparison.OrdinalIgnoreCase), null, 100, progress: progress);
+                s => s.Equals("London", StringComparison.OrdinalIgnoreCase), null, 100, progress);
 
             // Expecting:
             // 1. Initial report (0)
@@ -430,14 +425,15 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
                 Assert.Equal("Alice", rows[0]["A"]);
                 Assert.Equal("London", rows[0]["B"]);
                 Assert.Equal("1", rows[0][Parser.RowNumberKey]);
-                
+
                 Assert.Equal("Bob", rows[1]["A"]);
                 Assert.Equal("Paris", rows[1]["B"]);
                 Assert.Equal("2", rows[1][Parser.RowNumberKey]);
             }
             finally
             {
-                Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.FirstRowIsHeader), oldVal } });
+                Configuration.Save(
+                    new Dictionary<string, string> { { nameof(Configuration.FirstRowIsHeader), oldVal } });
             }
         }
         finally
@@ -445,6 +441,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             if (File.Exists(filePath)) File.Delete(filePath);
         }
     }
+
     [Fact]
     public void TestCsvFilePatternsSplit()
     {
@@ -452,20 +449,32 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         try
         {
             // Test with semicolon (app.config style)
-            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv" } });
-            
+            Configuration.Save(new Dictionary<string, string>
+                { { nameof(Configuration.CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv" } });
+
             var filePath = "test.tsv";
-            var patterns = Configuration.CsvFilePatterns.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var patterns =
+                Configuration.CsvFilePatterns.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
             Assert.Contains("*" + Path.GetExtension(filePath), patterns, StringComparer.OrdinalIgnoreCase);
 
             // Test with comma (default Configuration.cs style)
-            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CsvFilePatterns), "*.csv,*.gz,*.ssv,*.tsv" } });
+            Configuration.Save(new Dictionary<string, string>
+                { { nameof(Configuration.CsvFilePatterns), "*.csv,*.gz,*.ssv,*.tsv" } });
             patterns = Configuration.CsvFilePatterns.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
             Assert.Contains("*" + Path.GetExtension(filePath), patterns, StringComparer.OrdinalIgnoreCase);
         }
         finally
         {
-            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CsvFilePatterns), oldPatterns } });
+            Configuration.Save(
+                new Dictionary<string, string> { { nameof(Configuration.CsvFilePatterns), oldPatterns } });
+        }
+    }
+
+    private class MockProgress(Action<int> callback) : IProgress<int>
+    {
+        public void Report(int value)
+        {
+            callback(value);
         }
     }
 }

@@ -8,7 +8,7 @@
         Title="CSVoom">
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0">
         <!-- Top bar -->
-        <Menu Grid.Row="0" >
+        <Menu Grid.Row="0">
             <MenuItem Header="Import file" Name="OpenButton" Click="OpenButton_Click" />
             <MenuItem Header="Export file" Name="ExportButton" Click="ExportButton_Click" />
             <MenuItem Header="Navigate" Name="NavigateButton" Click="NavigateButton_Click" />
@@ -67,7 +67,8 @@
                     </DockPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="Column:" VerticalAlignment="Center" />
-                        <AutoCompleteBox x:Name="NavigateColumnBox" Width="200" MinimumPrefixLength="0" FilterMode="Contains" />
+                        <AutoCompleteBox x:Name="NavigateColumnBox" Width="200" MinimumPrefixLength="0"
+                                         FilterMode="Contains" />
                         <TextBlock Text="Row:" VerticalAlignment="Center" />
                         <NumericUpDown x:Name="NavigateRowNumeric" Minimum="1" Value="1" FormatString="N0" />
                         <Button Content="Go" Click="NavigateGo_Click" />
@@ -80,7 +81,8 @@
                         <TextBlock Text="Command History" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
                         <Button Content="Close" Click="CloseInlinePanel_Click" HorizontalAlignment="Right" />
                     </DockPanel>
-                    <ListBox x:Name="CommandHistoryListBox" MaxHeight="300" SelectionChanged="CommandHistoryListBox_SelectionChanged">
+                    <ListBox x:Name="CommandHistoryListBox" MaxHeight="300"
+                             SelectionChanged="CommandHistoryListBox_SelectionChanged">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}" Margin="4" />
@@ -98,7 +100,8 @@
             AutoGenerateColumns="False"
             IsReadOnly="True"
             GridLinesVisibility="All"
-            HeadersVisibility="All" />
+            HeadersVisibility="All"
+            SelectionMode="Extended"/>
         <StackPanel
             Grid.Row="4"
             Orientation="Horizontal">

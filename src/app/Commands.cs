@@ -11,31 +11,30 @@ public static class Commands
         var current = new StringBuilder();
         var inQuotes = false;
 
-        for (var i = 0; i < commandText.Length; i++)
+        foreach (var c in commandText)
         {
-            var c = commandText[i];
-            if (c == '\"')
+            switch (c)
             {
-                inQuotes = !inQuotes;
-            }
-            else if (c == ' ' && !inQuotes)
-            {
-                if (current.Length > 0)
+                case '\"':
+                    inQuotes = !inQuotes;
+                    break;
+                case ' ' when !inQuotes:
                 {
-                    result.Add(current.ToString());
-                    current.Clear();
+                    if (current.Length > 0)
+                    {
+                        result.Add(current.ToString());
+                        current.Clear();
+                    }
+
+                    break;
                 }
-            }
-            else
-            {
-                current.Append(c);
+                default:
+                    current.Append(c);
+                    break;
             }
         }
 
-        if (current.Length > 0)
-        {
-            result.Add(current.ToString());
-        }
+        if (current.Length > 0) result.Add(current.ToString());
 
         return result.ToArray();
     }

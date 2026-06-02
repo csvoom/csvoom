@@ -90,7 +90,7 @@ public static class Configuration
         var value = ConfigurationManager.AppSettings[key];
 
         if (string.IsNullOrWhiteSpace(value)) return defaultValue;
-        
+
         // Remove thousands separators if present (e.g., "10,000" -> "10000")
         value = value.Replace(",", "").Replace(" ", "");
 

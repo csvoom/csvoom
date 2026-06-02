@@ -1,5 +1,4 @@
-﻿using Xunit;
-using CSVoom.app;
+﻿using CSVoom.app;
 
 namespace CSVoom.test.app;
 
@@ -10,7 +9,7 @@ public class CommandParsingTests
     {
         var command = "find \"column name\" search_term";
         var parts = Commands.SplitCommand(command);
-        
+
         Assert.Equal(3, parts.Length);
         Assert.Equal("find", parts[0]);
         Assert.Equal("column name", parts[1]);
@@ -22,7 +21,7 @@ public class CommandParsingTests
     {
         var command = "load 1 100";
         var parts = Commands.SplitCommand(command);
-        
+
         Assert.Equal(3, parts.Length);
         Assert.Equal("load", parts[0]);
         Assert.Equal("1", parts[1]);
