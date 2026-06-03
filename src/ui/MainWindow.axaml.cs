@@ -176,14 +176,52 @@ public partial class MainWindow : Window
 
     private void NavigateGo_Click(object? sender, RoutedEventArgs e)
     {
-        var targetRow = (int)(NavigateRowNumeric.Value ?? 1);
+        var targetRowInput = NavigateRowNumeric.Text;
         var targetColumnInput = NavigateColumnBox.Text;
+
+        if (_visibleRows.Count == 0)
+        {
+            StatusTextBlock.Text = "No data loaded to navigate.";
+            return;
+        }
+
+        // Determine target row
+        int targetRow;
+        if (string.IsNullOrWhiteSpace(targetRowInput))
+        {
+            targetRow = _visibleRows[0].RowNumber;
+        }
+        else if (!int.TryParse(targetRowInput, out targetRow))
+        {
+            StatusTextBlock.Text = "Please enter a valid row number.";
+            return;
+        }
 
         // Determine header to search for
         string targetHeader;
         if (string.IsNullOrWhiteSpace(targetColumnInput))
         {
-            targetHeader = Parser.RowNumberKey;
+            // Default to the first visible column (index 0 is RowNumberKey)
+            var firstVisibleColumn = CsvDataGrid.Columns.FirstOrDefault(c => c.IsVisible);
+            if (firstVisibleColumn != null)
+            {
+                var columnIndex = CsvDataGrid.Columns.IndexOf(firstVisibleColumn);
+                if (columnIndex == 0)
+                {
+                    targetHeader = Parser.RowNumberKey;
+                }
+                else
+                {
+                    var dataIndex = ToDataColumnIndex(columnIndex);
+                    targetHeader = dataIndex >= 0 && dataIndex < Parser.Headers.Count
+                        ? Parser.Headers[dataIndex]
+                        : Parser.RowNumberKey;
+                }
+            }
+            else
+            {
+                targetHeader = Parser.RowNumberKey;
+            }
         }
         else
         {
@@ -210,28 +248,15 @@ public partial class MainWindow : Window
     {
         if (_visibleRows.Count == 0)
         {
-            NavigateRowNumeric.Minimum = 1;
-            NavigateRowNumeric.Maximum = 1;
-            NavigateRowNumeric.Value = 1;
+            NavigateRowNumeric.ItemsSource = null;
             return;
         }
 
         var rowNumbers = _visibleRows
-            .Select(r => (int?)r.RowNumber)
-            .Where(n => n.HasValue)
-            .Select(n => n!.Value)
+            .Select(r => r.RowNumber.ToString())
             .ToList();
 
-        if (rowNumbers.Count > 0)
-        {
-            var min = rowNumbers.Min();
-            var max = rowNumbers.Max();
-            NavigateRowNumeric.Minimum = min;
-            NavigateRowNumeric.Maximum = max;
-            // Snap current value to range if needed
-            if (NavigateRowNumeric.Value < min) NavigateRowNumeric.Value = min;
-            if (NavigateRowNumeric.Value > max) NavigateRowNumeric.Value = max;
-        }
+        NavigateRowNumeric.ItemsSource = rowNumbers;
     }
 
     private void CloseInlinePanel_Click(object? sender, RoutedEventArgs e)
