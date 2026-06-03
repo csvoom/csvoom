@@ -228,7 +228,6 @@ public partial class MainWindow : Window
             var max = rowNumbers.Max();
             NavigateRowNumeric.Minimum = min;
             NavigateRowNumeric.Maximum = max;
-            NavigateRowNumeric.Increment = -1;
             // Snap current value to range if needed
             if (NavigateRowNumeric.Value < min) NavigateRowNumeric.Value = min;
             if (NavigateRowNumeric.Value > max) NavigateRowNumeric.Value = max;

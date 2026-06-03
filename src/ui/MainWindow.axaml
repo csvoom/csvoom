@@ -70,7 +70,7 @@
                         <AutoCompleteBox x:Name="NavigateColumnBox" Width="200" MinimumPrefixLength="0"
                                          FilterMode="Contains" />
                         <TextBlock Text="Row:" VerticalAlignment="Center" />
-                        <NumericUpDown x:Name="NavigateRowNumeric" Minimum="0" Value="1" FormatString="N0"/>
+                        <NumericUpDown x:Name="NavigateRowNumeric" Minimum="0" Value="1" FormatString="N0" AllowSpin="True"/>
                         <Button Content="Go" Click="NavigateGo_Click" />
                     </StackPanel>
                 </StackPanel>
