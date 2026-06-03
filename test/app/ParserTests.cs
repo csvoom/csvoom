@@ -471,6 +471,59 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    [Fact]
+    public async Task TestAutoDetectSeparator()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            // Scenario 1: Semicolon separated file with .csv extension
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name;city;age",
+                "Alice;London;30",
+                "Bob;Paris;25"
+            ]);
+
+            var parser = new Parser();
+            await parser.ReadHeadersAsync(filePath);
+
+            Assert.Equal(3, parser.Headers.Count);
+            Assert.Equal("name", parser.Headers[0]);
+            Assert.Equal("city", parser.Headers[1]);
+            Assert.Equal("age", parser.Headers[2]);
+
+            var rows = await parser.ReadRangeAsync(filePath, 1, 10);
+            Assert.Equal(2, rows.Count);
+            Assert.Equal("Alice", rows[0][0]);
+            Assert.Equal("London", rows[0][1]);
+            Assert.Equal("30", rows[0][2]);
+
+            // Scenario 2: Comma separated file with .csv extension
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city,age",
+                "Alice,London,30",
+                "Bob,Paris,25"
+            ]);
+
+            parser = new Parser();
+            await parser.ReadHeadersAsync(filePath);
+
+            Assert.Equal(3, parser.Headers.Count);
+            Assert.Equal("name", parser.Headers[0]);
+            Assert.Equal("city", parser.Headers[1]);
+            Assert.Equal("age", parser.Headers[2]);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
+
     private class MockProgress(Action<int> callback) : IProgress<int>
     {
         public void Report(int value)

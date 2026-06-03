@@ -488,6 +488,12 @@ public partial class MainWindow : Window
         else
         {
             startIndex = FindColumnIndexByNameOrLetter(arguments[0]);
+            if (startIndex == -1)
+            {
+                StatusTextBlock.Text = $"Column {arguments[0]} not found.";
+                return;
+            }
+            startIndex++; // Convert to 1-based for the logic below if needed, or keep it 0-based
             endIndex = arguments.Length == 2 ? FindColumnIndexByNameOrLetter(arguments[1]) : startIndex;
 
             if (startIndex == -1 || endIndex == -1)
@@ -846,7 +852,17 @@ public partial class MainWindow : Window
         var caseInsensitiveMatch = _columnsByName.FirstOrDefault(kvp => kvp.Key.Equals(normalized, StringComparison.OrdinalIgnoreCase)).Value;
         if (caseInsensitiveMatch is not null) return caseInsensitiveMatch;
 
-        return _columnsByLetter.GetValueOrDefault(normalized.ToUpperInvariant());
+        if (_columnsByLetter.TryGetValue(normalized.ToUpperInvariant(), out var columnByLetter)) return columnByLetter;
+
+        // If numeric, try by index
+        if (int.TryParse(normalized, out var index))
+        {
+            var gridIndex = index + RowNumberColumnOffset - 1;
+            if (gridIndex >= 0 && gridIndex < CsvDataGrid.Columns.Count)
+                return CsvDataGrid.Columns[gridIndex];
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -878,9 +894,12 @@ public partial class MainWindow : Window
             if (!includeHidden && !column.IsVisible) continue;
             if (!isRegex && matchingColumns.Contains(column)) continue;
 
+            var dataColumnIndex = ToDataColumnIndex(columnIndex);
             var dataHeader = columnIndex == 0
                 ? Parser.RowNumberKey
-                : Parser.Headers[ToDataColumnIndex(columnIndex)];
+                : dataColumnIndex >= 0 && dataColumnIndex < Parser.Headers.Count 
+                    ? Parser.Headers[dataColumnIndex] 
+                    : string.Empty;
 
             var displayHeader = column.Header?.ToString() ?? string.Empty;
 
@@ -906,10 +925,22 @@ public partial class MainWindow : Window
     {
         var columns = FindColumnsByNameLetterOrRegex(searchValue, true);
         var headers = new List<string>(columns.Count);
-        headers.AddRange(columns.Select(column => CsvDataGrid.Columns.IndexOf(column))
-            .Select(columnIndex => columnIndex == 0
-                ? Parser.RowNumberKey
-                : Parser.Headers[ToDataColumnIndex(columnIndex)]));
+        foreach (var column in columns)
+        {
+            var columnIndex = CsvDataGrid.Columns.IndexOf(column);
+            if (columnIndex == -1) continue;
+
+            if (columnIndex == 0)
+            {
+                headers.Add(Parser.RowNumberKey);
+            }
+            else
+            {
+                var dataIndex = ToDataColumnIndex(columnIndex);
+                if (dataIndex >= 0 && dataIndex < Parser.Headers.Count)
+                    headers.Add(Parser.Headers[dataIndex]);
+            }
+        }
 
         return headers;
     }

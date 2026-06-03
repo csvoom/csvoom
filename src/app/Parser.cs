@@ -196,12 +196,18 @@ public class Parser
             extension = Path.GetExtension(Path.GetFileNameWithoutExtension(filePath)).ToLowerInvariant();
         }
 
-        _delimiter = extension switch
+        if (extension == ".tsv")
         {
-            ".tsv" => '\t',
-            ".ssv" => ';',
-            _ => ','
-        };
+            _delimiter = '\t';
+        }
+        else if (extension == ".ssv")
+        {
+            _delimiter = ';';
+        }
+        else
+        {
+            _delimiter = await DetectDelimiterAsync(filePath, cancellationToken);
+        }
 
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
 
@@ -216,6 +222,46 @@ public class Parser
         {
             Headers = [];
         }
+    }
+
+    /// <summary>
+    /// Detects whether the delimiter is ',' or ';' based on frequency in the first line.
+    /// </summary>
+    private async Task<char> DetectDelimiterAsync(string filePath, CancellationToken cancellationToken)
+    {
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        if (await enumerator.MoveNextAsync())
+        {
+            var firstLine = enumerator.Current;
+            var commaCount = 0;
+            var semicolonCount = 0;
+            var inQuotes = false;
+
+            for (var i = 0; i < firstLine.Length; i++)
+            {
+                var c = firstLine[i];
+                if (c == '"')
+                {
+                    if (inQuotes && i + 1 < firstLine.Length && firstLine[i + 1] == '"')
+                    {
+                        i++;
+                    }
+                    else
+                    {
+                        inQuotes = !inQuotes;
+                    }
+                }
+                else if (!inQuotes)
+                {
+                    if (c == ',') commaCount++;
+                    else if (c == ';') semicolonCount++;
+                }
+            }
+
+            return semicolonCount > commaCount ? ';' : ',';
+        }
+
+        return ',';
     }
 
     /// <summary>
