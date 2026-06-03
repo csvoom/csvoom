@@ -160,6 +160,10 @@ public partial class MainWindow : Window
     {
         Configuration.Save(_editedSettings);
         ApplyConfigurationToUi();
+        if (Avalonia.Application.Current is App app)
+        {
+            app.UpdateTheme();
+        }
         CloseInlinePanel();
     }
 

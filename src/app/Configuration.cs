@@ -65,6 +65,11 @@ public static class Configuration
     public static string CsvFilePatterns => GetString(nameof(CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv");
 
     /// <summary>
+    /// Gets the theme variant.
+    /// </summary>
+    public static string Theme => GetString(nameof(Theme), "Dark");
+
+    /// <summary>
     /// Gets the list of available configuration settings.
     /// </summary>
     public static IReadOnlyList<ConfigurationSetting> Settings { get; } =
@@ -79,7 +84,8 @@ public static class Configuration
         new(nameof(CreateColumnHeaders), "Boolean", "true", "Whether to move the first row into column headers."),
         new(nameof(CreateRowNumbers), "Boolean", "true", "Whether to add an automatic numbers column."),
         new(nameof(FirstRowIsHeader), "Boolean", "true", "Whether to treat the first row as a header."),
-        new(nameof(CsvFilePatterns), "String", "*.csv;*.gz;*.ssv;*.tsv", "File patterns to match CSV files.")
+        new(nameof(CsvFilePatterns), "String", "*.csv;*.gz;*.ssv;*.tsv", "File patterns to match CSV files."),
+        new(nameof(Theme), "String", "Dark", "Theme variant: Light or Dark.")
     ];
 
     /// <summary>

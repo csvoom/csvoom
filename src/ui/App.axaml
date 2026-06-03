@@ -1,9 +1,29 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="CSVoom.App"
-             RequestedThemeVariant="Dark"
              Name="CSVoom">
     <!-- "Default" ThemeVariant follows the system theme variant. "Dark" or "Light" are other available options. -->
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppBackground">#F3F3F3</SolidColorBrush>
+                    <SolidColorBrush x:Key="AppSecondaryBackground">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="AppBorder">#D1D1D1</SolidColorBrush>
+                    <SolidColorBrush x:Key="AppMenuBackground">#EAEAEA</SolidColorBrush>
+                    <SolidColorBrush x:Key="AppAccent">#0078D4</SolidColorBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AppBackground">#1F1F1F</SolidColorBrush>
+                    <SolidColorBrush x:Key="AppSecondaryBackground">#2D2D2D</SolidColorBrush>
+                    <SolidColorBrush x:Key="AppBorder">#3F3F3F</SolidColorBrush>
+                    <SolidColorBrush x:Key="AppMenuBackground">#252525</SolidColorBrush>
+                    <SolidColorBrush x:Key="AppAccent">#0078D4</SolidColorBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
@@ -11,29 +31,46 @@
 
         <Styles>
             <Style Selector="Window">
-                <Setter Property="Background" Value="#151515" />
+                <Setter Property="Background" Value="{DynamicResource AppBackground}" />
             </Style>
             <Style Selector="Menu">
-                <Setter Property="Background" Value="#101010" />
-                <Setter Property="BorderBrush" Value="#252525" />
-                <Setter Property="BorderThickness" Value="1,1,1,1" />
+                <Setter Property="Background" Value="{DynamicResource AppMenuBackground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+                <Setter Property="BorderThickness" Value="0,0,0,1" />
+                <Setter Property="Padding" Value="4,2" />
             </Style>
             <Style Selector="MenuItem">
-                <Setter Property="BorderThickness" Value="0, 0, 1, 0" />
-                <Setter Property="BorderBrush" Value="#252525" />
-                <Setter Property="Background" Value="#101010" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Margin" Value="2,0" />
             </Style>
             <Style Selector="Button">
-                <Setter Property="BorderThickness" Value="1, 1, 1, 1" />
-                <Setter Property="BorderBrush" Value="#252525" />
-                <Setter Property="Background" Value="#101010" />
-                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+                <Setter Property="Background" Value="{DynamicResource AppSecondaryBackground}" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Padding" Value="12,4" />
+            </Style>
+            <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource AppAccent}" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AppAccent}" />
             </Style>
             <Style Selector="AutoCompleteBox">
-                <Setter Property="Background" Value="#101010" />
-                <Setter Property="BorderThickness" Value="1, 1, 1, 1" />
-                <Setter Property="BorderBrush" Value="#252525" />
-                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="Background" Value="{DynamicResource AppSecondaryBackground}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+                <Setter Property="CornerRadius" Value="4" />
+            </Style>
+            <Style Selector="DataGrid">
+                <Setter Property="Background" Value="{DynamicResource AppSecondaryBackground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+            </Style>
+            <Style Selector="ListBox">
+                <Setter Property="Background" Value="{DynamicResource AppSecondaryBackground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="4" />
             </Style>
         </Styles>
     </Application.Styles>

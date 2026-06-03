@@ -42,9 +42,9 @@
         <Border Grid.Row="1"
                 x:Name="InlinePanelContainer"
                 IsVisible="False"
-                BorderBrush="#202020"
+                BorderBrush="{DynamicResource AppBorder}"
                 BorderThickness="0,0,0,1"
-                Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+                Background="{DynamicResource AppSecondaryBackground}">
             <Grid Margin="8">
                 <!-- Settings Panel -->
                 <StackPanel x:Name="SettingsPanel" IsVisible="False" Spacing="8">
