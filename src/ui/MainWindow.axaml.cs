@@ -860,6 +860,31 @@ public partial class MainWindow : Window
         RunButton.Content = toStatus ? "Cancel" : "Run";
         OpenButton.IsEnabled = !toStatus;
         _isBusy = toStatus;
+
+        if (!toStatus && _currentFilePath is not null)
+        {
+            _ = UpdateTotalRowCountAsync();
+        }
+    }
+
+    private async Task UpdateTotalRowCountAsync()
+    {
+        try
+        {
+            if (_currentFilePath is null) return;
+            var rowCount = await Parser.GetRowCountAsync(_currentFilePath);
+            var columnCount = Parser.Headers.Count;
+            var columnRange = columnCount > 0
+                ? $" - Column range: A-{Parser.GetColumnLetter(columnCount - 1)}"
+                : string.Empty;
+
+            TotalRowsTextBlock.Text = $"Row count: {rowCount}{columnRange}";
+        }
+        catch (Exception ex)
+        {
+            TotalRowsTextBlock.Text = "Error counting rows";
+            StatusTextBlock.Text = $"Error counting rows: {ex.Message}";
+        }
     }
 
 

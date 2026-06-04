@@ -14,6 +14,33 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    public async Task TestGetRowCount()
+    {
+        var filePath = Path.GetTempFileName();
+        File.Move(filePath, Path.ChangeExtension(filePath, ".csv"));
+        filePath = Path.ChangeExtension(filePath, ".csv");
+
+        try
+        {
+            await File.WriteAllLinesAsync(filePath,
+            [
+                "name,city",
+                "Alice,London",
+                "Bob,Paris",
+                "Charlie,London"
+            ]);
+
+            // Assuming Configuration.FirstRowIsHeader is true (default)
+            var rowCount = await _parser.GetRowCountAsync(filePath);
+            Assert.Equal(3, rowCount);
+        }
+        finally
+        {
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+    }
+
+    [Fact]
     public async Task TestReadRange()
     {
         var filePath = Path.GetTempFileName();

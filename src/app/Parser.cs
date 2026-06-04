@@ -282,6 +282,27 @@ public class Parser
     }
 
     /// <summary>
+    /// Counts the total number of rows in the specified CSV file.
+    /// </summary>
+    public async Task<int> GetRowCountAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(filePath)) return 0;
+        var count = 0;
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        while (await enumerator.MoveNextAsync())
+        {
+            count++;
+        }
+
+        if (Configuration.FirstRowIsHeader && count > 0)
+        {
+            count--;
+        }
+
+        return count;
+    }
+
+    /// <summary>
     /// Reads a range of rows from the specified CSV file asynchronously.
     /// </summary>
     public async IAsyncEnumerable<CsvRow> ReadRangeAsyncEnumerable(string filePath, int startRow,
