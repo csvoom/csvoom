@@ -217,8 +217,8 @@ public partial class MainWindow : Window
                 else
                 {
                     var dataIndex = ToDataColumnIndex(columnIndex);
-                    targetHeader = dataIndex >= 0 && dataIndex < Parser.Headers.Count
-                        ? Parser.Headers[dataIndex]
+                    targetHeader = dataIndex is >= 0 && dataIndex < Parser.Headers.Count
+                        ? Parser.Headers[dataIndex.Value]
                         : Parser.RowNumberKey;
                 }
             }
@@ -236,7 +236,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            targetHeader = headers[0];
+            targetHeader = headers.FirstOrDefault() ?? Parser.RowNumberKey;
         }
 
         // Check if row is already loaded
@@ -416,7 +416,7 @@ public partial class MainWindow : Window
 
         var columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
         var searchHeaders = columnSearchValue is null ? null : FindHeadersByNameLetterOrRegex(columnSearchValue);
-        var searchHeader = columnSearchValue is null ? null : searchHeaders?[0];
+        var searchHeader = columnSearchValue is null ? null : searchHeaders?.FirstOrDefault();
 
         if (columnSearchValue is not null && searchHeader is null)
         {
@@ -515,24 +515,21 @@ public partial class MainWindow : Window
         }
         else
         {
-            startIndex = FindColumnIndexByNameOrLetter(arguments[0]);
-            if (startIndex == -1)
+            var startColIndex = FindColumnIndexByNameOrLetter(arguments[0]);
+            if (startColIndex == null)
             {
                 StatusTextBlock.Text = $"Column {arguments[0]} not found.";
                 return;
             }
-            startIndex++; // Convert to 1-based for the logic below if needed, or keep it 0-based
-            endIndex = arguments.Length == 2 ? FindColumnIndexByNameOrLetter(arguments[1]) : startIndex;
-
-            if (startIndex == -1 || endIndex == -1)
+            startIndex = startColIndex.Value;
+            
+            int? endColIndex = arguments.Length == 2 ? FindColumnIndexByNameOrLetter(arguments[1]) : startColIndex;
+            if (endColIndex == null)
             {
-                var missing = new List<string>();
-                if (startIndex == -1) missing.Add(arguments[0]);
-                if (endIndex == -1 && arguments.Length == 2 && arguments[1] != arguments[0]) missing.Add(arguments[1]);
-
-                StatusTextBlock.Text = $"Column(s) not found: {string.Join(", ", missing)}";
+                StatusTextBlock.Text = $"Column {arguments[1]} not found.";
                 return;
             }
+            endIndex = endColIndex.Value;
 
             if (cancellationToken.IsCancellationRequested) return;
             if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
@@ -545,7 +542,7 @@ public partial class MainWindow : Window
         }
 
         StatusTextBlock.Text =
-            $"{(state ? "Showing":"Hiding")} column(s): {Parser.GetColumnLetter(ToDataColumnIndex(startIndex))} -> {Parser.GetColumnLetter(ToDataColumnIndex(endIndex))}.";
+            $"{(state ? "Showing" : "Hiding")} column(s): {Parser.GetColumnLetter(ToDataColumnIndex(startIndex) ?? 0)} -> {Parser.GetColumnLetter(ToDataColumnIndex(endIndex) ?? 0)}.";
     }
 
     // UI interaction
@@ -856,7 +853,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Sets the UI to busy state or available state.
+    /// Sets the UI to a busy state or available state.
     /// </summary>
     private void SetIsBusy(bool toStatus)
     {
@@ -883,12 +880,10 @@ public partial class MainWindow : Window
         if (_columnsByLetter.TryGetValue(normalized.ToUpperInvariant(), out var columnByLetter)) return columnByLetter;
 
         // If numeric, try by index
-        if (int.TryParse(normalized, out var index))
-        {
-            var gridIndex = index + RowNumberColumnOffset - 1;
-            if (gridIndex >= 0 && gridIndex < CsvDataGrid.Columns.Count)
-                return CsvDataGrid.Columns[gridIndex];
-        }
+        if (!int.TryParse(normalized, out var index)) return null;
+        var gridIndex = (long)index + RowNumberColumnOffset - 1;
+        if (gridIndex >= 0 && gridIndex < CsvDataGrid.Columns.Count)
+            return CsvDataGrid.Columns[(int)gridIndex];
 
         return null;
     }
@@ -925,8 +920,8 @@ public partial class MainWindow : Window
             var dataColumnIndex = ToDataColumnIndex(columnIndex);
             var dataHeader = columnIndex == 0
                 ? Parser.RowNumberKey
-                : dataColumnIndex >= 0 && dataColumnIndex < Parser.Headers.Count 
-                    ? Parser.Headers[dataColumnIndex] 
+                : dataColumnIndex is >= 0 && dataColumnIndex < Parser.Headers.Count 
+                    ? Parser.Headers[dataColumnIndex.Value] 
                     : string.Empty;
 
             var displayHeader = column.Header?.ToString() ?? string.Empty;
@@ -953,20 +948,22 @@ public partial class MainWindow : Window
     {
         var columns = FindColumnsByNameLetterOrRegex(searchValue, true);
         var headers = new List<string>(columns.Count);
-        foreach (var column in columns)
+        foreach (var columnIndex in columns.Select(column => CsvDataGrid.Columns.IndexOf(column)))
         {
-            var columnIndex = CsvDataGrid.Columns.IndexOf(column);
-            if (columnIndex == -1) continue;
-
-            if (columnIndex == 0)
+            switch (columnIndex)
             {
-                headers.Add(Parser.RowNumberKey);
-            }
-            else
-            {
-                var dataIndex = ToDataColumnIndex(columnIndex);
-                if (dataIndex >= 0 && dataIndex < Parser.Headers.Count)
-                    headers.Add(Parser.Headers[dataIndex]);
+                case -1:
+                    continue;
+                case 0:
+                    headers.Add(Parser.RowNumberKey);
+                    break;
+                default:
+                {
+                    var dataIndex = ToDataColumnIndex(columnIndex);
+                    if (dataIndex is >= 0 && dataIndex < Parser.Headers.Count)
+                        headers.Add(Parser.Headers[dataIndex.Value]);
+                    break;
+                }
             }
         }
 
@@ -1011,10 +1008,18 @@ public partial class MainWindow : Window
     /// </summary>
     /// <param name="searchValue">Value to search by</param>
     /// <returns></returns>
-    private int FindColumnIndexByNameOrLetter(string searchValue)
+    private int? FindColumnIndexByNameOrLetter(string searchValue)
     {
         var column = FindColumnByNameOrLetter(searchValue);
-        return column is null ? -1 : CsvDataGrid.Columns.IndexOf(column);
+        try
+        {
+            return column is null ? null : CsvDataGrid.Columns.IndexOf(column);
+        }
+        catch (Exception e)
+        {
+            StatusTextBlock.Text = $"Error finding column index: {e.Message}";
+            return null;
+        }
     }
 
     /// <summary>
@@ -1022,11 +1027,10 @@ public partial class MainWindow : Window
     /// </summary>
     /// <param name="gridColumnIndex">Value to convert</param>
     /// <returns></returns>
-    private static int ToDataColumnIndex(int gridColumnIndex)
+    private static int? ToDataColumnIndex(int gridColumnIndex)
     {
         return gridColumnIndex - RowNumberColumnOffset;
     }
-
     private static bool IsRegexTarget(string searchValue)
     {
         return searchValue is ['/', _, ..] && searchValue[^1] == '/';
