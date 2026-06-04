@@ -550,7 +550,7 @@ public partial class MainWindow : Window
     /// <summary>
     ///     Runs the command currently entered in the command text box or cancels the current operation while busy.
     /// </summary>
-    private async void RunCommandButton_Click(object? sender, RoutedEventArgs e)
+    private void RunCommandButton_Click(object? sender, RoutedEventArgs e)
     {
         if (_isBusy)
         {
@@ -558,13 +558,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
+        _ = ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
     }
 
     /// <summary>
     ///     Runs the entered command when the user presses Enter in the command text box.
     /// </summary>
-    private async void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
+    private void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
         if (_isBusy)
@@ -574,7 +574,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
+        _ = ExecuteCommandAsync(CommandTextBox.Text ?? string.Empty);
         e.Handled = true;
     }
 
@@ -906,7 +906,7 @@ public partial class MainWindow : Window
 
         // If numeric, try by index
         if (!int.TryParse(normalized, out var index)) return null;
-        var gridIndex = (long)index + RowNumberColumnOffset - 1;
+        var gridIndex = (long)index;
         if (gridIndex >= 0 && gridIndex < CsvDataGrid.Columns.Count)
             return CsvDataGrid.Columns[(int)gridIndex];
 
@@ -932,7 +932,11 @@ public partial class MainWindow : Window
         if (!isRegex)
         {
             var exactColumn = FindColumnByNameOrLetter(normalizedSearchValue);
-            if (exactColumn is not null && (includeHidden || exactColumn.IsVisible)) matchingColumns.Add(exactColumn);
+            if (exactColumn is not null && (includeHidden || exactColumn.IsVisible))
+            {
+                matchingColumns.Add(exactColumn);
+                return matchingColumns; // Return only the exact match if found
+            }
         }
 
         for (var columnIndex = 0; columnIndex < CsvDataGrid.Columns.Count; columnIndex++)

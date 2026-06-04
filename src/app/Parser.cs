@@ -346,7 +346,7 @@ public class Parser
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
-        var headers = headersToSearch ?? Headers.Prepend(RowNumberKey).ToList();
+        var headers = (headersToSearch ?? Headers.Prepend(RowNumberKey).ToList()).ToList();
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
         var currentRowNumber = 0;
         var matchCount = 0;
@@ -361,8 +361,15 @@ public class Parser
 
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
             var foundInThisRow = false;
-            foreach (var header in headers.TakeWhile(_ => matchCount < maxMatches))
+
+            // BUG: The code was using 'headers' which might be the parser's internal 'Headers' list.
+            // When iterating, it should only check the headers specified in 'headersToSearch'.
+            // Wait, 'headers' IS derived from 'headersToSearch'.
+
+            foreach (var header in headers)
             {
+                if (matchCount >= maxMatches) break;
+
                 var value = row[header, Headers];
                 if (!matcher(value)) continue;
 
