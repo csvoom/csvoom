@@ -41,7 +41,7 @@ public class CsvRow(string[] values, int rowNumber)
         get
         {
             if (key == Parser.RowNumberKey) return RowNumber.ToString();
-            var index = headers.IndexOf(key);
+            int index = headers.IndexOf(key);
             return index >= 0 && index < Values.Length ? Values[index] : string.Empty;
         }
     }
@@ -77,7 +77,7 @@ public class Parser
             _csvFilePatterns = Configuration.CsvFilePatterns.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries);
         }
 
-        var stream = File.OpenRead(filePath);
+        FileStream stream = File.OpenRead(filePath);
         try
         {
             if (!_csvFilePatterns.Contains("*" + Path.GetExtension(filePath), StringComparer.OrdinalIgnoreCase))
@@ -101,7 +101,7 @@ public class Parser
     {
         if (!File.Exists(filePath)) yield break;
 
-        using var reader = BuildReader(filePath);
+        using StreamReader reader = BuildReader(filePath);
         while (await reader.ReadLineAsync(cancel) is { } line) yield return line;
     }
 
@@ -110,20 +110,20 @@ public class Parser
     /// </summary>
     private List<string> ParseCsvLine(string line)
     {
-        var fields = new List<string>(Headers.Count > 0 ? Headers.Count : Math.Max(1, line.Length / 8));
+        List<string> fields = new List<string>(Headers.Count > 0 ? Headers.Count : Math.Max(1, line.Length / 8));
         if (line.Length == 0)
         {
             fields.Add(string.Empty);
             return fields;
         }
 
-        var lineSpan = line.AsSpan();
-        var inQuotes = false;
-        var start = 0;
+        ReadOnlySpan<char> lineSpan = line;
+        bool inQuotes = false;
+        int start = 0;
 
-        for (var i = 0; i < lineSpan.Length; i++)
+        for (int i = 0; i < lineSpan.Length; i++)
         {
-            var c = lineSpan[i];
+            char c = lineSpan[i];
 
             if (c == '"')
             {
@@ -158,8 +158,8 @@ public class Parser
             field = field[1..^1];
             if (field.IndexOf('"') == -1) return field.ToString();
 
-            var sb = new StringBuilder(field.Length);
-            for (var i = 0; i < field.Length; i++)
+            StringBuilder sb = new(field.Length);
+            for (int i = 0; i < field.Length; i++)
             {
                 if (field[i] == '"' && i + 1 < field.Length && field[i + 1] == '"')
                 {
@@ -190,30 +190,24 @@ public class Parser
     {
         if (cancellationToken.IsCancellationRequested) return;
 
-        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        string extension = Path.GetExtension(filePath).ToLowerInvariant();
         if (extension == ".gz")
         {
             extension = Path.GetExtension(Path.GetFileNameWithoutExtension(filePath)).ToLowerInvariant();
         }
 
-        if (extension == ".tsv")
+        _delimiter = extension switch
         {
-            _delimiter = '\t';
-        }
-        else if (extension == ".ssv")
-        {
-            _delimiter = ';';
-        }
-        else
-        {
-            _delimiter = await DetectDelimiterAsync(filePath, cancellationToken);
-        }
+            ".tsv" => '\t',
+            ".ssv" => ';',
+            _ => await DetectDelimiterAsync(filePath, cancellationToken)
+        };
 
-        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
 
         if (await enumerator.MoveNextAsync())
         {
-            var firstRow = ParseCsvLine(enumerator.Current);
+            List<string> firstRow = ParseCsvLine(enumerator.Current);
             Headers = Configuration.FirstRowIsHeader
                 ? firstRow
                 : Enumerable.Range(0, firstRow.Count).Select(GetColumnLetter).ToList();
@@ -229,39 +223,42 @@ public class Parser
     /// </summary>
     private async Task<char> DetectDelimiterAsync(string filePath, CancellationToken cancellationToken)
     {
-        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
-        if (await enumerator.MoveNextAsync())
-        {
-            var firstLine = enumerator.Current;
-            var commaCount = 0;
-            var semicolonCount = 0;
-            var inQuotes = false;
+        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        if (!await enumerator.MoveNextAsync()) return ',';
+        
+        string firstLine = enumerator.Current;
+        int commaCount = 0;
+        int semicolonCount = 0;
+        bool inQuotes = false;
 
-            for (var i = 0; i < firstLine.Length; i++)
+        for (int i = 0; i < firstLine.Length; i++)
+        {
+            char c = firstLine[i];
+            if (c == '"')
             {
-                var c = firstLine[i];
-                if (c == '"')
+                if (inQuotes && i + 1 < firstLine.Length && firstLine[i + 1] == '"')
                 {
-                    if (inQuotes && i + 1 < firstLine.Length && firstLine[i + 1] == '"')
-                    {
-                        i++;
-                    }
-                    else
-                    {
-                        inQuotes = !inQuotes;
-                    }
+                    i++;
                 }
-                else if (!inQuotes)
+                else
                 {
-                    if (c == ',') commaCount++;
-                    else if (c == ';') semicolonCount++;
+                    inQuotes = !inQuotes;
                 }
             }
-
-            return semicolonCount > commaCount ? ';' : ',';
+            else if (!inQuotes)
+            {
+                switch (c)
+                {
+                    case ',':
+                        commaCount++;
+                        break;
+                    case ';':
+                        semicolonCount++;
+                        break;
+                }
+            }
         }
-
-        return ',';
+        return semicolonCount > commaCount ? ';' : ',';
     }
 
     /// <summary>
@@ -269,7 +266,7 @@ public class Parser
     /// </summary>
     public static string GetColumnLetter(int columnIndex)
     {
-        var letter = string.Empty;
+        string letter = string.Empty;
         columnIndex++;
         while (columnIndex > 0)
         {
@@ -287,8 +284,8 @@ public class Parser
     public async Task<int> GetRowCountAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(filePath)) return 0;
-        var count = 0;
-        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        int count = 0;
+        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
         while (await enumerator.MoveNextAsync())
         {
             count++;
@@ -309,8 +306,8 @@ public class Parser
         int endRow, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
-        var currentRowNumber = 0;
-        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        int currentRowNumber = 0;
+        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
 
         if (startRow <= 0 || endRow < startRow) yield break;
 
@@ -331,8 +328,8 @@ public class Parser
     public async Task<ObservableCollection<CsvRow>> ReadRangeAsync(string filePath, int startRow,
         int endRow, CancellationToken cancellationToken = default)
     {
-        var rows = new ObservableCollection<CsvRow>();
-        await foreach (var row in ReadRangeAsyncEnumerable(filePath, startRow, endRow, cancellationToken))
+        ObservableCollection<CsvRow> rows = [];
+        await foreach (CsvRow row in ReadRangeAsyncEnumerable(filePath, startRow, endRow, cancellationToken))
             rows.Add(row);
         return rows;
     }
@@ -346,10 +343,10 @@ public class Parser
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
-        var headers = (headersToSearch ?? Headers.Prepend(RowNumberKey).ToList()).ToList();
-        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
-        var currentRowNumber = 0;
-        var matchCount = 0;
+        List<string> headers = (headersToSearch ?? Headers.Prepend(RowNumberKey).ToList()).ToList();
+        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        int currentRowNumber = 0;
+        int matchCount = 0;
 
         if (headers.Count == 0) yield break;
 
@@ -359,18 +356,18 @@ public class Parser
             currentRowNumber++;
             if (currentRowNumber == 1 && Configuration.FirstRowIsHeader) continue;
 
-            var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
-            var foundInThisRow = false;
+            CsvRow row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
+            bool foundInThisRow = false;
 
             // BUG: The code was using 'headers' which might be the parser's internal 'Headers' list.
             // When iterating, it should only check the headers specified in 'headersToSearch'.
             // Wait, 'headers' IS derived from 'headersToSearch'.
 
-            foreach (var header in headers)
+            foreach (string header in headers)
             {
                 if (matchCount >= maxMatches) break;
 
-                var value = row[header, Headers];
+                string value = row[header, Headers];
                 if (!matcher(value)) continue;
 
                 matchCount++;
@@ -404,24 +401,24 @@ public class Parser
     {
         if (cancellationToken.IsCancellationRequested) return;
 
-        var extension = Path.GetExtension(filePath).ToLowerInvariant();
-        var delimiter = extension switch
+        string extension = Path.GetExtension(filePath).ToLowerInvariant();
+        char delimiter = extension switch
         {
             ".tsv" => '\t',
             ".ssv" => ';',
             _ => ','
         };
 
-        await using var writer = new StreamWriter(filePath, false, Encoding.UTF8);
+        await using StreamWriter writer = new(filePath, false, Encoding.UTF8);
 
         if (Configuration.FirstRowIsHeader)
             await writer.WriteLineAsync(string.Join(delimiter.ToString(),
                 visibleHeaders.Select(h => EscapeCsvField(h, delimiter))));
 
-        foreach (var row in rows)
+        foreach (CsvRow row in rows)
         {
             if (cancellationToken.IsCancellationRequested) return;
-            var values = visibleHeaders.Select(h => row[h, Headers]);
+            IEnumerable<string> values = visibleHeaders.Select(h => row[h, Headers]);
             await writer.WriteLineAsync(string.Join(delimiter.ToString(),
                 values.Select(v => EscapeCsvField(v, delimiter))));
         }
