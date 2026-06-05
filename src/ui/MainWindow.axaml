@@ -92,16 +92,24 @@
                 </StackPanel>
             </Grid>
         </Border>
-
-        <DataGrid
-            Grid.Row="3"
-            x:Name="CsvDataGrid"
-            CanUserSortColumns="False"
-            AutoGenerateColumns="False"
-            IsReadOnly="True"
-            GridLinesVisibility="All"
-            HeadersVisibility="All"
-            SelectionMode="Extended"/>
+        <StackPanel Grid.Row="3" Orientation="Horizontal">
+            <DataGrid
+                x:Name="CsvDataGrid"
+                CanUserSortColumns="False"
+                AutoGenerateColumns="False"
+                IsReadOnly="True"
+                GridLinesVisibility="All"
+                HeadersVisibility="All"
+                SelectionMode="Extended"/>
+            <DataGrid
+                x:Name="CsvComparisonGrid"
+                CanUserSortColumns="False"
+                AutoGenerateColumns="False"
+                IsReadOnly="True"
+                GridLinesVisibility="All"
+                HeadersVisibility="All"
+                SelectionMode="Extended"/>
+        </StackPanel>
         <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
             <StackPanel
                 Grid.Column="0"

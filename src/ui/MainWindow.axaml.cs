@@ -86,9 +86,9 @@ public partial class MainWindow : Window
         _editedSettings.Clear();
         SettingsFieldsContainer.Children.Clear();
 
-        foreach (var setting in Configuration.Settings)
+        foreach (ConfigurationSetting setting in Configuration.Settings)
         {
-            var currentValue = Configuration.GetRawValue(setting.Key);
+            string currentValue = Configuration.GetRawValue(setting.Key);
 
             SettingsFieldsContainer.Children.Add(new TextBlock
             {
@@ -105,9 +105,9 @@ public partial class MainWindow : Window
 
             if (setting.Type.Equals("Boolean", StringComparison.OrdinalIgnoreCase))
             {
-                var checkBox = new CheckBox
+                CheckBox checkBox = new CheckBox
                 {
-                    IsChecked = bool.TryParse(currentValue, out var boolValue) && boolValue,
+                    IsChecked = bool.TryParse(currentValue, out bool boolValue) && boolValue,
                     Content = setting.Key
                 };
 
@@ -121,7 +121,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                var textBox = new TextBox
+                TextBox textBox = new TextBox
                 {
                     Text = currentValue,
                     PlaceholderText = setting.DefaultValue
@@ -180,8 +180,8 @@ public partial class MainWindow : Window
 
     private void NavigateGo_Click(object? sender, RoutedEventArgs e)
     {
-        var targetRowInput = NavigateRowNumeric.Text;
-        var targetColumnInput = NavigateColumnBox.Text;
+        string? targetRowInput = NavigateRowNumeric.Text;
+        string? targetColumnInput = NavigateColumnBox.Text;
 
         if (_visibleRows.Count == 0)
         {
@@ -206,18 +206,18 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(targetColumnInput))
         {
             // Default to the first visible column (index 0 is RowNumberKey)
-            var firstVisibleColumn = CsvDataGrid.Columns.FirstOrDefault(c => c.IsVisible);
+            DataGridColumn? firstVisibleColumn = CsvDataGrid.Columns.FirstOrDefault(c => c.IsVisible);
             if (firstVisibleColumn != null)
             {
-                var columnIndex = CsvDataGrid.Columns.IndexOf(firstVisibleColumn);
+                int columnIndex = CsvDataGrid.Columns.IndexOf(firstVisibleColumn);
                 if (columnIndex == 0)
                 {
                     targetHeader = Parser.RowNumberKey;
                 }
                 else
                 {
-                    var dataIndex = ToDataColumnIndex(columnIndex);
-                    targetHeader = dataIndex is >= 0 && dataIndex < Parser.Headers.Count
+                    int? dataIndex = ToDataColumnIndex(columnIndex);
+                    targetHeader = dataIndex is >= 0 && dataIndex.Value < Parser.Headers.Count
                         ? Parser.Headers[dataIndex.Value]
                         : Parser.RowNumberKey;
                 }
@@ -229,7 +229,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            var headers = FindHeadersByNameLetterOrRegex(targetColumnInput);
+            List<string> headers = FindHeadersByNameLetterOrRegex(targetColumnInput);
             if (headers.Count == 0)
             {
                 StatusTextBlock.Text = $"No matching column found for {targetColumnInput}";
@@ -240,7 +240,7 @@ public partial class MainWindow : Window
         }
 
         // Check if row is already loaded
-        var rowInView = _visibleRows.FirstOrDefault(r => r.RowNumber == targetRow);
+        CsvRow? rowInView = _visibleRows.FirstOrDefault(r => r.RowNumber == targetRow);
 
         if (rowInView != null)
             ScrollToMatch(rowInView, targetHeader);
@@ -256,7 +256,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var rowNumbers = _visibleRows
+        List<string> rowNumbers = _visibleRows
             .Select(r => r.RowNumber.ToString())
             .ToList();
 
@@ -313,22 +313,22 @@ public partial class MainWindow : Window
         CloseInlinePanel();
         SetIsBusy(true);
 
-        using var cancellationTokenSource = new CancellationTokenSource();
+        using CancellationTokenSource cancellationTokenSource = new();
         _commandCancellationTokenSource = cancellationTokenSource;
-        var cancellationToken = cancellationTokenSource.Token;
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         try
         {
-            var parts = Commands.SplitCommand(commandText.Trim());
-            var command = parts[0];
-            var arguments = parts[1..];
+            string[] parts = Commands.SplitCommand(commandText.Trim());
+            string command = parts[0];
+            string[] arguments = parts[1..];
             if (arguments.Length == 0)
             {
                 StatusTextBlock.Text = $"\"{command}\" requires arguments";
                 return;
             }
 
-            var isValid = true;
+            bool isValid = true;
             switch (command.ToLowerInvariant())
             {
                 case "load": await Command_LoadAsync(arguments, cancellationToken); break;
@@ -358,7 +358,7 @@ public partial class MainWindow : Window
 
     private void LogCommand(string command)
     {
-        var maxItems = Configuration.MaxCommandHistoryItems;
+        int maxItems = Configuration.MaxCommandHistoryItems;
         if (maxItems <= 0) return;
 
         _commandHistory.Remove(command);
@@ -390,7 +390,7 @@ public partial class MainWindow : Window
                 await LoadRangeIntoViewAsync(startRow, startRow + Configuration.AutoLoadRows - 1, cancellationToken);
                 break;
             case 2: // Load between arguments [0] and [1]
-                if (!int.TryParse(arguments[0], out startRow) || !int.TryParse(arguments[1], out var endRow) ||
+                if (!int.TryParse(arguments[0], out startRow) || !int.TryParse(arguments[1], out int endRow) ||
                     startRow <= 0 || endRow < startRow)
                 {
                     StatusTextBlock.Text = errorMessage;
@@ -411,12 +411,12 @@ public partial class MainWindow : Window
     private async Task Command_FindAsync(string[] arguments, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
-        var searchText = arguments[0];
-        var searchDescription = IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
+        string searchText = arguments[0];
+        string searchDescription = IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
 
-        var columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
-        var searchHeaders = columnSearchValue is null ? null : FindHeadersByNameLetterOrRegex(columnSearchValue);
-        var searchHeader = columnSearchValue is null ? null : searchHeaders?.FirstOrDefault();
+        string? columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
+        List<string>? searchHeaders = columnSearchValue is null ? null : FindHeadersByNameLetterOrRegex(columnSearchValue);
+        string? searchHeader = columnSearchValue is null ? null : searchHeaders?.FirstOrDefault();
 
         if (columnSearchValue is not null && searchHeader is null)
         {
@@ -424,8 +424,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var searchMatcher = CreateSearchMatcher(searchText);
-        var searchBaseText = searchHeader switch
+        Func<string, bool> searchMatcher = CreateSearchMatcher(searchText);
+        string searchBaseText = searchHeader switch
         {
             null => $"Searching file for {searchDescription}...",
             Parser.RowNumberKey => $"Searching file row numbers for {searchDescription}...",
@@ -436,14 +436,14 @@ public partial class MainWindow : Window
         {
             StatusTextBlock.Text = searchBaseText;
 
-            var progress = new Progress<int>(count =>
+            Progress<int> progress = new(count =>
             {
                 StatusTextBlock.Text = $"{searchBaseText} Found {count:N0} match(es) so far.";
             });
 
             _visibleRows.Clear();
-            var foundResults = new ObservableCollection<FindResult>();
-            var rowsToShow = new HashSet<CsvRow>();
+            ObservableCollection<FindResult> foundResults = [];
+            HashSet<CsvRow> rowsToShow = [];
 
 
             await foreach (var match in Parser.ReadMatchesAsyncEnumerable(
@@ -495,10 +495,9 @@ public partial class MainWindow : Window
     /// </summary>
     private void Command_SetVisibility(string[] arguments, bool state, CancellationToken cancellationToken)
     {
-        var errorMessage =
-            $"Error {(state ? "Showing":"Hiding")} columns. Please check your input and try again.";
-        var startIndex = 1;
-        var endIndex = CsvDataGrid.Columns.Count;
+        string errorMessage = $"Error {(state ? "Showing":"Hiding")} columns. Please check your input and try again.";
+        int startIndex = 1;
+        int endIndex = CsvDataGrid.Columns.Count;
         if (arguments.Length is < 1 or > 2)
         {
             StatusTextBlock.Text = errorMessage;
@@ -507,7 +506,7 @@ public partial class MainWindow : Window
 
         if (arguments[0] == "all")
         {
-            for (var i = startIndex; i <= endIndex; i++)
+            for (int i = startIndex; i <= endIndex; i++)
             {
                 if (cancellationToken.IsCancellationRequested) return;
                 CsvDataGrid.Columns[i - 1].IsVisible = state;
@@ -515,7 +514,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            var startColIndex = FindColumnIndexByNameOrLetter(arguments[0]);
+            int? startColIndex = FindColumnIndexByNameOrLetter(arguments[0]);
             if (startColIndex == null)
             {
                 StatusTextBlock.Text = $"Column {arguments[0]} not found.";
@@ -534,7 +533,7 @@ public partial class MainWindow : Window
             if (cancellationToken.IsCancellationRequested) return;
             if (startIndex > endIndex) (startIndex, endIndex) = (endIndex, startIndex);
 
-            for (var i = startIndex; i <= endIndex; i++)
+            for (int i = startIndex; i <= endIndex; i++)
             {
                 if (cancellationToken.IsCancellationRequested) return;
                 CsvDataGrid.Columns[i].IsVisible = state;
@@ -589,14 +588,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        var commandText = CommandTextBox.Text ?? string.Empty;
-        var trimmedCommandText = commandText.TrimStart();
-        var separatorIndex = trimmedCommandText.IndexOf(' ');
-        var command = separatorIndex < 0
+        string commandText = CommandTextBox.Text ?? string.Empty;
+        string trimmedCommandText = commandText.TrimStart();
+        int separatorIndex = trimmedCommandText.IndexOf(' ');
+        string command = separatorIndex < 0
             ? trimmedCommandText
             : trimmedCommandText[..separatorIndex];
 
-        CommandExampleTextBlock.Text = command.Length > 0 && CommandExamples.TryGetValue(command, out var example)
+        CommandExampleTextBlock.Text = command.Length > 0 && CommandExamples.TryGetValue(command, out string? example)
             ? example
             : string.Empty;
     }
@@ -606,7 +605,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async void OpenButton_Click(object? sender, RoutedEventArgs e)
     {
-        var topLevel = GetTopLevel(this);
+        TopLevel? topLevel = GetTopLevel(this);
         if (topLevel is null || _isBusy)
         {
             StatusTextBlock.Text = "Unable to open the file picker.";
@@ -615,13 +614,13 @@ public partial class MainWindow : Window
 
         SetIsBusy(true);
 
-        using var cancellationTokenSource = new CancellationTokenSource();
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
         _commandCancellationTokenSource = cancellationTokenSource;
-        var cancellationToken = cancellationTokenSource.Token;
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         try
         {
-            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            IReadOnlyList<IStorageFile> files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
                 Title = "Open CSV file",
                 AllowMultiple = false,
@@ -648,7 +647,7 @@ public partial class MainWindow : Window
 
             await Parser.ReadHeadersAsync(_currentFilePath, cancellationToken);
 
-            var rowNumberColumn = new DataGridTextColumn
+            DataGridTextColumn rowNumberColumn = new DataGridTextColumn
             {
                 Header = "",
                 Binding = new Binding("RowNumber"),
@@ -659,11 +658,11 @@ public partial class MainWindow : Window
             CsvDataGrid.Columns.Add(rowNumberColumn);
             _columnsByName[Parser.RowNumberKey] = rowNumberColumn;
             _columnsByLetter[""] = rowNumberColumn;
-            for (var i = 0; i < Parser.Headers.Count; i++)
+            for (int i = 0; i < Parser.Headers.Count; i++)
             {
-                var header = Parser.Headers[i];
-                var columnLetter = Parser.GetColumnLetter(i);
-                var column = new DataGridTextColumn
+                string header = Parser.Headers[i];
+                string columnLetter = Parser.GetColumnLetter(i);
+                DataGridTextColumn column = new DataGridTextColumn
                 {
                     Header = $"{columnLetter}: {header}",
                     Binding = new Binding($"Values[{i}]"),
@@ -696,18 +695,18 @@ public partial class MainWindow : Window
     /// </summary>
     private async void ExportButton_Click(object? sender, RoutedEventArgs e)
     {
-        var topLevel = GetTopLevel(this);
+        TopLevel? topLevel = GetTopLevel(this);
         if (topLevel is null || _isBusy || _currentFilePath is null) return;
 
         SetIsBusy(true);
 
-        using var cancellationTokenSource = new CancellationTokenSource();
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
         _commandCancellationTokenSource = cancellationTokenSource;
-        var cancellationToken = cancellationTokenSource.Token;
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         try
         {
-            var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            IStorageFile? file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
             {
                 Title = "Export CSV",
                 DefaultExtension = "csv",
@@ -726,13 +725,13 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = "Exporting...";
 
             // Find visible headers (excluding RowNumberKey)
-            var visibleHeaders = new List<string>();
-            foreach (var header in Parser.Headers)
-                if (_columnsByName.TryGetValue(header, out var column) && column.IsVisible)
+            List<string> visibleHeaders = [];
+            foreach (string header in Parser.Headers)
+                if (_columnsByName.TryGetValue(header, out DataGridColumn? column) && column.IsVisible)
                     visibleHeaders.Add(header);
 
             // Visible rows
-            var rowsToExport = _visibleRows.ToList();
+            List<CsvRow> rowsToExport = _visibleRows.ToList();
 
             await Parser.ExportToCsvAsync(file.Path.LocalPath, rowsToExport, visibleHeaders, cancellationToken);
             StatusTextBlock.Text = $"Exported to {file.Name}";
@@ -772,7 +771,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void ScrollToMatch(CsvRow? row, string header, string? columnLetter = null)
     {
-        var column = header == Parser.RowNumberKey
+        DataGridColumn? column = header == Parser.RowNumberKey
             ? CsvDataGrid.Columns[0]
             : columnLetter is not null
                 ? FindColumnByNameOrLetter(columnLetter)
@@ -818,21 +817,19 @@ public partial class MainWindow : Window
         {
             StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}...";
             _visibleRows.Clear();
-            var rowCount = 0;
-            var batch = new List<CsvRow>();
-            await foreach (var row in Parser.ReadRangeAsyncEnumerable(_currentFilePath, startRow, endRow,
-                               cancellationToken))
+            int rowCount = 0;
+            List<CsvRow> batch = [];
+            await foreach (CsvRow row in Parser.ReadRangeAsyncEnumerable(_currentFilePath, startRow, endRow, cancellationToken))
             {
                 batch.Add(row);
                 rowCount++;
                 if (rowCount % 100 != 0) continue;
                 StatusTextBlock.Text = $"Loading rows {startRow:N0}:{endRow:N0}... Loaded {rowCount:N0} rows.";
-                foreach (var r in batch) _visibleRows.Add(r);
+                foreach (CsvRow r in batch) _visibleRows.Add(r);
                 batch.Clear();
                 _gridView.Refresh();
             }
-
-            foreach (var r in batch) _visibleRows.Add(r);
+            foreach (CsvRow r in batch) _visibleRows.Add(r);
             _gridView.Refresh();
             UpdateNavigationRange();
 
@@ -872,9 +869,9 @@ public partial class MainWindow : Window
         try
         {
             if (_currentFilePath is null) return;
-            var rowCount = await Parser.GetRowCountAsync(_currentFilePath);
-            var columnCount = Parser.Headers.Count;
-            var columnRange = columnCount > 0
+            int rowCount = await Parser.GetRowCountAsync(_currentFilePath);
+            int columnCount = Parser.Headers.Count;
+            string columnRange = columnCount > 0
                 ? $" - Column range: A-{Parser.GetColumnLetter(columnCount - 1)}"
                 : string.Empty;
 
@@ -895,18 +892,18 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(searchValue)) return null;
 
-        var normalized = searchValue.Trim();
+        string normalized = searchValue.Trim();
 
-        if (_columnsByName.TryGetValue(normalized, out var column)) return column;
+        if (_columnsByName.TryGetValue(normalized, out DataGridColumn? column)) return column;
 
-        var caseInsensitiveMatch = _columnsByName.FirstOrDefault(kvp => kvp.Key.Equals(normalized, StringComparison.OrdinalIgnoreCase)).Value;
+        DataGridColumn? caseInsensitiveMatch = _columnsByName.FirstOrDefault(kvp => kvp.Key.Equals(normalized, StringComparison.OrdinalIgnoreCase)).Value;
         if (caseInsensitiveMatch is not null) return caseInsensitiveMatch;
 
-        if (_columnsByLetter.TryGetValue(normalized.ToUpperInvariant(), out var columnByLetter)) return columnByLetter;
+        if (_columnsByLetter.TryGetValue(normalized.ToUpperInvariant(), out DataGridColumn? columnByLetter)) return columnByLetter;
 
         // If numeric, try by index
-        if (!int.TryParse(normalized, out var index)) return null;
-        var gridIndex = (long)index;
+        if (!int.TryParse(normalized, out int index)) return null;
+        long gridIndex = index;
         if (gridIndex >= 0 && gridIndex < CsvDataGrid.Columns.Count)
             return CsvDataGrid.Columns[(int)gridIndex];
 
@@ -923,15 +920,15 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(searchValue)) return [];
 
-        var normalizedSearchValue = searchValue.Trim();
+        string normalizedSearchValue = searchValue.Trim();
 
-        var matchingColumns = new List<DataGridColumn>();
+        List<DataGridColumn> matchingColumns = [];
 
-        var isRegex = TryCreateRegexTarget(normalizedSearchValue, out var regex);
+        bool isRegex = TryCreateRegexTarget(normalizedSearchValue, out Regex regex);
 
         if (!isRegex)
         {
-            var exactColumn = FindColumnByNameOrLetter(normalizedSearchValue);
+            DataGridColumn? exactColumn = FindColumnByNameOrLetter(normalizedSearchValue);
             if (exactColumn is not null && (includeHidden || exactColumn.IsVisible))
             {
                 matchingColumns.Add(exactColumn);
@@ -939,21 +936,21 @@ public partial class MainWindow : Window
             }
         }
 
-        for (var columnIndex = 0; columnIndex < CsvDataGrid.Columns.Count; columnIndex++)
+        for (int columnIndex = 0; columnIndex < CsvDataGrid.Columns.Count; columnIndex++)
         {
-            var column = CsvDataGrid.Columns[columnIndex];
+            DataGridColumn column = CsvDataGrid.Columns[columnIndex];
 
             if (!includeHidden && !column.IsVisible) continue;
             if (!isRegex && matchingColumns.Contains(column)) continue;
 
-            var dataColumnIndex = ToDataColumnIndex(columnIndex);
-            var dataHeader = columnIndex == 0
+            int? dataColumnIndex = ToDataColumnIndex(columnIndex);
+            string dataHeader = columnIndex == 0
                 ? Parser.RowNumberKey
                 : dataColumnIndex is >= 0 && dataColumnIndex < Parser.Headers.Count 
                     ? Parser.Headers[dataColumnIndex.Value] 
                     : string.Empty;
 
-            var displayHeader = column.Header?.ToString() ?? string.Empty;
+            string displayHeader = column.Header?.ToString() ?? string.Empty;
 
             if (isRegex)
             {
@@ -975,9 +972,9 @@ public partial class MainWindow : Window
     /// </summary>
     private List<string> FindHeadersByNameLetterOrRegex(string searchValue)
     {
-        var columns = FindColumnsByNameLetterOrRegex(searchValue, true);
-        var headers = new List<string>(columns.Count);
-        foreach (var columnIndex in columns.Select(column => CsvDataGrid.Columns.IndexOf(column)))
+        List<DataGridColumn> columns = FindColumnsByNameLetterOrRegex(searchValue, true);
+        List<string> headers = new(columns.Count);
+        foreach (int columnIndex in columns.Select(column => CsvDataGrid.Columns.IndexOf(column)))
         {
             switch (columnIndex)
             {
@@ -988,7 +985,7 @@ public partial class MainWindow : Window
                     break;
                 default:
                 {
-                    var dataIndex = ToDataColumnIndex(columnIndex);
+                    int? dataIndex = ToDataColumnIndex(columnIndex);
                     if (dataIndex is >= 0 && dataIndex < Parser.Headers.Count)
                         headers.Add(Parser.Headers[dataIndex.Value]);
                     break;
@@ -1009,8 +1006,8 @@ public partial class MainWindow : Window
         if (searchValue.Length < 2 || searchValue[0] != '/' || searchValue[^1] != '/' ||
             !Configuration.RegexSearch) return false;
 
-        var pattern = searchValue[1..^1];
-        var regexOptions = RegexOptions.CultureInvariant;
+        string pattern = searchValue[1..^1];
+        RegexOptions regexOptions = RegexOptions.CultureInvariant;
 
         if (Configuration.CaseInsensitiveSearch)
             regexOptions |= RegexOptions.IgnoreCase;
@@ -1039,7 +1036,7 @@ public partial class MainWindow : Window
     /// <returns></returns>
     private int? FindColumnIndexByNameOrLetter(string searchValue)
     {
-        var column = FindColumnByNameOrLetter(searchValue);
+        DataGridColumn? column = FindColumnByNameOrLetter(searchValue);
         try
         {
             return column is null ? null : CsvDataGrid.Columns.IndexOf(column);
@@ -1070,7 +1067,7 @@ public partial class MainWindow : Window
     /// </summary>
     private Func<string, bool> CreateSearchMatcher(string searchTarget)
     {
-        return TryCreateRegexTarget(searchTarget, out var regex)
+        return TryCreateRegexTarget(searchTarget, out Regex regex)
             ? regex.IsMatch
             : value => value.Contains(
                 searchTarget,
@@ -1095,7 +1092,7 @@ public partial class MainWindow : Window
 
         public override string ToString()
         {
-            var columnText = Header == Parser.RowNumberKey ? "row numbers" : Header;
+            string columnText = Header == Parser.RowNumberKey ? "row numbers" : Header;
             return $"Row {RowNumber}, Column {columnText}: {Value}";
         }
     }
