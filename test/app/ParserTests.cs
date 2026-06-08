@@ -551,6 +551,52 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    [Fact]
+    public async Task TestCompareAsyncEnumerable()
+    {
+        var leftFile = Path.GetTempFileName() + ".csv";
+        var rightFile = Path.GetTempFileName() + ".csv";
+
+        try
+        {
+            await File.WriteAllLinesAsync(leftFile,
+            [
+                "id,name",
+                "1,Alice",
+                "2,Bob",
+                "3,Charlie"
+            ]);
+
+            await File.WriteAllLinesAsync(rightFile,
+            [
+                "id,name",
+                "1,Alice",
+                "2,Robert",
+                "4,David"
+            ]);
+
+            var results = new List<ComparisonResult>();
+            await foreach (var result in Parser.CompareAsyncEnumerable(leftFile, rightFile))
+            {
+                results.Add(result);
+            }
+
+            // Alice is same, so not in results
+            // Bob vs Robert is different (Row 2)
+            // Charlie vs David is different (Row 3)
+
+            Assert.Equal(2, results.Count);
+
+            Assert.Contains(results, r => r.RowNumber == 2 && r.Status == ComparisonStatus.Different);
+            Assert.Contains(results, r => r.RowNumber == 3 && r.Status == ComparisonStatus.Different);
+        }
+        finally
+        {
+            if (File.Exists(leftFile)) File.Delete(leftFile);
+            if (File.Exists(rightFile)) File.Delete(rightFile);
+        }
+    }
+
     private class MockProgress(Action<int> callback) : IProgress<int>
     {
         public void Report(int value)

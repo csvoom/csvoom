@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.Linq;
 
@@ -63,6 +64,12 @@ public static class Configuration
     /// Gets the file patterns to match CSV files.
     /// </summary>
     public static string CsvFilePatterns => GetString(nameof(CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv");
+
+    /// <summary>
+    /// Gets the file patterns to match CSV files as an array.
+    /// </summary>
+    public static string[] GetCsvFilePatterns() =>
+        CsvFilePatterns.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>
     /// Gets the theme variant.

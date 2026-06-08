@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -56,6 +57,50 @@ public class Parser
     /// Special header key used for the row number column.
     /// </summary>
     public const string RowNumberKey = "__CsvRowNumber";
+
+    /// <summary>
+    /// Creates a reusable matcher for plain text or slash-delimited regex command targets.
+    /// </summary>
+    public static Func<string, bool> CreateSearchMatcher(string searchTarget)
+    {
+        if (IsRegexTarget(searchTarget) && Configuration.RegexSearch)
+        {
+            string pattern = searchTarget[1..^1];
+            RegexOptions regexOptions = RegexOptions.CultureInvariant;
+
+            if (Configuration.CaseInsensitiveSearch)
+                regexOptions |= RegexOptions.IgnoreCase;
+
+            try
+            {
+                var regex = new Regex(
+                    pattern,
+                    regexOptions,
+                    TimeSpan.FromMilliseconds(Configuration.RegexTimeoutMilliseconds));
+
+                return regex.IsMatch;
+            }
+            catch (ArgumentException)
+            {
+                // Fallback to plain text search if regex is invalid
+            }
+        }
+
+        return value => value.Contains(
+            searchTarget,
+            Configuration.CaseInsensitiveSearch
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Checks if the search value is a regex target.
+    /// </summary>
+    public static bool IsRegexTarget(string searchValue)
+    {
+        return searchValue is ['/', _, ..] && searchValue[^1] == '/';
+    }
+
     private char _delimiter = ',';
     private string[] _csvFilePatterns = [];
 
@@ -97,7 +142,7 @@ public class Parser
     /// <summary>
     /// Builds an async enumerator that reads lines from the specified CSV file.
     /// </summary>
-    private async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
+    internal async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
     {
         if (!File.Exists(filePath)) yield break;
 
@@ -108,7 +153,7 @@ public class Parser
     /// <summary>
     /// Parses a single CSV line into a list of fields.
     /// </summary>
-    private List<string> ParseCsvLine(string line)
+    internal List<string> ParseCsvLine(string line)
     {
         List<string> fields = new List<string>(Headers.Count > 0 ? Headers.Count : Math.Max(1, line.Length / 8));
         if (line.Length == 0)
@@ -181,7 +226,7 @@ public class Parser
     /// <summary>
     /// Builds a <see cref="CsvRow"/> from a list of values and a row number.
     /// </summary>
-    private CsvRow BuildRow(List<string> values, int rowNumber) => new([.. values], rowNumber);
+    internal CsvRow BuildRow(List<string> values, int rowNumber) => new([.. values], rowNumber);
 
     /// <summary>
     /// Reads the headers from the specified CSV file.
@@ -434,4 +479,88 @@ public class Parser
             return $"\"{field.Replace("\"", "\"\"")}\"";
         return field;
     }
+
+    /// <summary>
+    /// Compares two CSV files and returns rows that are different.
+    /// </summary>
+    public static async IAsyncEnumerable<ComparisonResult> CompareAsyncEnumerable(
+        string leftFilePath,
+        string rightFilePath,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Parser leftParser = new();
+        Parser rightParser = new();
+
+        await leftParser.ReadHeadersAsync(leftFilePath, cancellationToken);
+        await rightParser.ReadHeadersAsync(rightFilePath, cancellationToken);
+
+        await using IAsyncEnumerator<string> leftEnumerator =
+            leftParser.BuildParserEnumerator(leftFilePath, cancellationToken);
+        await using IAsyncEnumerator<string> rightEnumerator =
+            rightParser.BuildParserEnumerator(rightFilePath, cancellationToken);
+
+        int currentRowNumber = 0;
+        bool leftHasMore = true;
+        bool rightHasMore = true;
+
+        if (Configuration.FirstRowIsHeader)
+        {
+            leftHasMore = await leftEnumerator.MoveNextAsync();
+            rightHasMore = await rightEnumerator.MoveNextAsync();
+        }
+
+        while ((leftHasMore || rightHasMore) && !cancellationToken.IsCancellationRequested)
+        {
+            leftHasMore = leftHasMore && await leftEnumerator.MoveNextAsync();
+            rightHasMore = rightHasMore && await rightEnumerator.MoveNextAsync();
+
+            if (!leftHasMore && !rightHasMore) break;
+
+            currentRowNumber++;
+
+            CsvRow? leftRow = leftHasMore
+                ? leftParser.BuildRow(leftParser.ParseCsvLine(leftEnumerator.Current), currentRowNumber)
+                : null;
+            CsvRow? rightRow = rightHasMore
+                ? rightParser.BuildRow(rightParser.ParseCsvLine(rightEnumerator.Current), currentRowNumber)
+                : null;
+
+            if (leftRow == null && rightRow != null)
+            {
+                yield return new ComparisonResult(currentRowNumber, null, rightRow, ComparisonStatus.RightOnly);
+            }
+            else if (leftRow != null && rightRow == null)
+            {
+                yield return new ComparisonResult(currentRowNumber, leftRow, null, ComparisonStatus.LeftOnly);
+            }
+            else if (leftRow != null && rightRow != null)
+            {
+                bool areEqual = leftRow.Values.SequenceEqual(rightRow.Values);
+                if (!areEqual)
+                {
+                    yield return new ComparisonResult(currentRowNumber, leftRow, rightRow, ComparisonStatus.Different);
+                }
+            }
+        }
+    }
 }
+
+/// <summary>
+/// Represents the status of a row comparison.
+/// </summary>
+public enum ComparisonStatus
+{
+    Equal,
+    Different,
+    LeftOnly,
+    RightOnly
+}
+
+/// <summary>
+/// Represents the result of a comparison between two rows.
+/// </summary>
+/// <param name="RowNumber">The row number.</param>
+/// <param name="LeftRow">The row from the left file.</param>
+/// <param name="RightRow">The row from the right file.</param>
+/// <param name="Status">The comparison status.</param>
+public record ComparisonResult(int RowNumber, CsvRow? LeftRow, CsvRow? RightRow, ComparisonStatus Status);

@@ -13,13 +13,12 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using CSVoom.app;
+using CSVoom.ui;
 
 namespace CSVoom;
 
 public partial class MainWindow : Window
 {
-    private const int RowNumberColumnOffset = 1;
-
     private static readonly IReadOnlyList<string> CommandSuggestions =
     [
         "load ",
@@ -133,6 +132,15 @@ public partial class MainWindow : Window
                 SettingsFieldsContainer.Children.Add(textBox);
             }
         }
+    }
+
+    /// <summary>
+    ///     Opens the Comparer window.
+    /// </summary>
+    private void ComparerButton_Click(object? sender, RoutedEventArgs e)
+    {
+        var comparerWindow = new Comparer();
+        comparerWindow.Show();
     }
 
     private void CommandHistoryButton_Click(object? sender, RoutedEventArgs e)
@@ -628,7 +636,7 @@ public partial class MainWindow : Window
                 [
                     new FilePickerFileType("CSV files")
                     {
-                        Patterns = GetCsvFilePatterns()
+                        Patterns = Configuration.GetCsvFilePatterns()
                     }
                 ]
             });
@@ -640,38 +648,12 @@ public partial class MainWindow : Window
             MainWindowElement.Title = $"{_currentFileName}";
             _gridView.Filter = null!;
             _visibleRows.Clear();
-            _columnsByName.Clear();
-            _columnsByLetter.Clear();
-            CsvDataGrid.Columns.Clear();
+
             StatusTextBlock.Text = $"Loading {_currentFileName}...";
 
             await Parser.ReadHeadersAsync(_currentFilePath, cancellationToken);
 
-            DataGridTextColumn rowNumberColumn = new DataGridTextColumn
-            {
-                Header = "",
-                Binding = new Binding("RowNumber"),
-                SortMemberPath = "RowNumber",
-                IsReadOnly = true,
-                CanUserSort = false
-            };
-            CsvDataGrid.Columns.Add(rowNumberColumn);
-            _columnsByName[Parser.RowNumberKey] = rowNumberColumn;
-            _columnsByLetter[""] = rowNumberColumn;
-            for (int i = 0; i < Parser.Headers.Count; i++)
-            {
-                string header = Parser.Headers[i];
-                string columnLetter = Parser.GetColumnLetter(i);
-                DataGridTextColumn column = new DataGridTextColumn
-                {
-                    Header = $"{columnLetter}: {header}",
-                    Binding = new Binding($"Values[{i}]"),
-                    SortMemberPath = $"Values[{i}]"
-                };
-                CsvDataGrid.Columns.Add(column);
-                _columnsByName[header] = column;
-                _columnsByLetter[columnLetter] = column;
-            }
+            DataGridUtils.InitializeColumns(CsvDataGrid, Parser, _columnsByName, _columnsByLetter);
 
             NavigateColumnBox.ItemsSource = Parser.Headers;
 
@@ -985,7 +967,7 @@ public partial class MainWindow : Window
                     break;
                 default:
                 {
-                    int? dataIndex = ToDataColumnIndex(columnIndex);
+                    int? dataIndex = DataGridUtils.ToDataColumnIndex(columnIndex);
                     if (dataIndex is >= 0 && dataIndex < Parser.Headers.Count)
                         headers.Add(Parser.Headers[dataIndex.Value]);
                     break;
@@ -1003,8 +985,7 @@ public partial class MainWindow : Window
     {
         regex = null!;
 
-        if (searchValue.Length < 2 || searchValue[0] != '/' || searchValue[^1] != '/' ||
-            !Configuration.RegexSearch) return false;
+        if (!Parser.IsRegexTarget(searchValue) || !Configuration.RegexSearch) return false;
 
         string pattern = searchValue[1..^1];
         RegexOptions regexOptions = RegexOptions.CultureInvariant;
@@ -1055,11 +1036,11 @@ public partial class MainWindow : Window
     /// <returns></returns>
     private static int? ToDataColumnIndex(int gridColumnIndex)
     {
-        return gridColumnIndex - RowNumberColumnOffset;
+        return DataGridUtils.ToDataColumnIndex(gridColumnIndex);
     }
     private static bool IsRegexTarget(string searchValue)
     {
-        return searchValue is ['/', _, ..] && searchValue[^1] == '/';
+        return Parser.IsRegexTarget(searchValue);
     }
 
     /// <summary>
@@ -1067,19 +1048,7 @@ public partial class MainWindow : Window
     /// </summary>
     private Func<string, bool> CreateSearchMatcher(string searchTarget)
     {
-        return TryCreateRegexTarget(searchTarget, out Regex regex)
-            ? regex.IsMatch
-            : value => value.Contains(
-                searchTarget,
-                Configuration.CaseInsensitiveSearch
-                    ? StringComparison.OrdinalIgnoreCase
-                    : StringComparison.Ordinal);
-    }
-
-    private static string[] GetCsvFilePatterns()
-    {
-        return Configuration.CsvFilePatterns
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return Parser.CreateSearchMatcher(searchTarget);
     }
 
     private sealed class FindResult
