@@ -14,13 +14,13 @@ namespace CSVoom;
 public partial class Comparer : Window
 {
     private readonly Parser _leftParser = new();
+    private readonly ObservableCollection<CsvRow> _leftVisibleRows = [];
     private readonly Parser _rightParser = new();
+    private readonly ObservableCollection<CsvRow> _rightVisibleRows = [];
+    private CancellationTokenSource? _comparisonCts;
+    private bool _isBusy;
     private string? _leftFilePath;
     private string? _rightFilePath;
-    private readonly ObservableCollection<CsvRow> _leftVisibleRows = [];
-    private readonly ObservableCollection<CsvRow> _rightVisibleRows = [];
-    private bool _isBusy;
-    private CancellationTokenSource? _comparisonCts;
 
     public Comparer()
     {
@@ -32,19 +32,13 @@ public partial class Comparer : Window
     private async void ImportLeft_Click(object? sender, RoutedEventArgs e)
     {
         _leftFilePath = await OpenFileAsync("Import Left CSV");
-        if (_leftFilePath != null)
-        {
-            await LoadFileAsync(_leftFilePath, _leftParser, LeftDataGrid, _leftVisibleRows);
-        }
+        if (_leftFilePath != null) await LoadFileAsync(_leftFilePath, _leftParser, LeftDataGrid, _leftVisibleRows);
     }
 
     private async void ImportRight_Click(object? sender, RoutedEventArgs e)
     {
         _rightFilePath = await OpenFileAsync("Import Right CSV");
-        if (_rightFilePath != null)
-        {
-            await LoadFileAsync(_rightFilePath, _rightParser, RightDataGrid, _rightVisibleRows);
-        }
+        if (_rightFilePath != null) await LoadFileAsync(_rightFilePath, _rightParser, RightDataGrid, _rightVisibleRows);
     }
 
     private async Task<string?> OpenFileAsync(string title)

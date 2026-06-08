@@ -71,7 +71,8 @@
                         <AutoCompleteBox x:Name="NavigateColumnBox" Width="200" MinimumPrefixLength="0"
                                          FilterMode="Contains" />
                         <TextBlock Text="Row:" VerticalAlignment="Center" />
-                        <AutoCompleteBox x:Name="NavigateRowNumeric" Width="100" MinimumPrefixLength="0" FilterMode="Contains" />
+                        <AutoCompleteBox x:Name="NavigateRowNumeric" Width="100" MinimumPrefixLength="0"
+                                         FilterMode="Contains" />
                         <Button Content="Go" Click="NavigateGo_Click" />
                     </StackPanel>
                 </StackPanel>
@@ -101,7 +102,7 @@
             IsReadOnly="True"
             GridLinesVisibility="All"
             HeadersVisibility="All"
-            SelectionMode="Extended"/>
+            SelectionMode="Extended" />
         <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
             <StackPanel
                 Grid.Column="0"

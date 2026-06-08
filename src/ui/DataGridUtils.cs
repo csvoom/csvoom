@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Data;
 using CSVoom.app;
@@ -11,9 +10,9 @@ public static class DataGridUtils
     public const int RowNumberColumnOffset = 1;
 
     public static void InitializeColumns(
-        DataGrid dataGrid, 
-        Parser parser, 
-        Dictionary<string, DataGridColumn>? columnsByName = null, 
+        DataGrid dataGrid,
+        Parser parser,
+        Dictionary<string, DataGridColumn>? columnsByName = null,
         Dictionary<string, DataGridColumn>? columnsByLetter = null)
     {
         dataGrid.Columns.Clear();
@@ -32,10 +31,10 @@ public static class DataGridUtils
         if (columnsByName != null) columnsByName[Parser.RowNumberKey] = rowNumberColumn;
         if (columnsByLetter != null) columnsByLetter[""] = rowNumberColumn;
 
-        for (int i = 0; i < parser.Headers.Count; i++)
+        for (var i = 0; i < parser.Headers.Count; i++)
         {
-            string header = parser.Headers[i];
-            string columnLetter = Parser.GetColumnLetter(i);
+            var header = parser.Headers[i];
+            var columnLetter = Parser.GetColumnLetter(i);
             var column = new DataGridTextColumn
             {
                 Header = $"{columnLetter}: {header}",

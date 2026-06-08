@@ -1,3 +1,4 @@
+using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -16,7 +17,7 @@ public class App : Application
 
     public void UpdateTheme()
     {
-        RequestedThemeVariant = Configuration.Theme.Equals("Light", System.StringComparison.OrdinalIgnoreCase)
+        RequestedThemeVariant = Configuration.Theme.Equals("Light", StringComparison.OrdinalIgnoreCase)
             ? ThemeVariant.Light
             : ThemeVariant.Dark;
     }

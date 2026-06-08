@@ -21,17 +21,17 @@
                       IsReadOnly="True"
                       GridLinesVisibility="All"
                       HeadersVisibility="All"
-                      SelectionMode="Extended"/>
-            
+                      SelectionMode="Extended" />
+
             <GridSplitter Grid.Column="1" Background="Gray" ResizeDirection="Columns" />
-            
+
             <DataGrid Grid.Column="2" x:Name="RightDataGrid"
                       CanUserSortColumns="False"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"
                       GridLinesVisibility="All"
                       HeadersVisibility="All"
-                      SelectionMode="Extended"/>
+                      SelectionMode="Extended" />
         </Grid>
 
         <!-- Status bar -->

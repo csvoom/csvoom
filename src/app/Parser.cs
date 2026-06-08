@@ -13,60 +13,69 @@ using System.Threading.Tasks;
 namespace CSVoom.app;
 
 /// <summary>
-/// Represents a row in a CSV file.
+///     Represents a row in a CSV file.
 /// </summary>
 /// <param name="values">The field values of the row.</param>
 /// <param name="rowNumber">The 1-based row number.</param>
 public class CsvRow(string[] values, int rowNumber)
 {
     /// <summary>
-    /// Gets the field values of the row.
+    ///     Gets the field values of the row.
     /// </summary>
     public string[] Values { get; } = values;
 
     /// <summary>
-    /// Gets the 1-based row number.
+    ///     Gets the 1-based row number.
     /// </summary>
     public int RowNumber { get; } = rowNumber;
 
     /// <summary>
-    /// Gets the field value at the specified index.
+    ///     Gets the field value at the specified index.
     /// </summary>
     public string this[int index] => index >= 0 && index < Values.Length ? Values[index] : string.Empty;
 
     /// <summary>
-    /// Gets the field value for the specified header key.
+    ///     Gets the field value for the specified header key.
     /// </summary>
     public string this[string key, List<string> headers]
     {
         get
         {
             if (key == Parser.RowNumberKey) return RowNumber.ToString();
-            int index = headers.IndexOf(key);
+            var index = headers.IndexOf(key);
             return index >= 0 && index < Values.Length ? Values[index] : string.Empty;
         }
     }
 }
 
 /// <summary>
-/// Provides CSV parsing and export functionality.
+///     Provides CSV parsing and export functionality.
 /// </summary>
 public class Parser
 {
     /// <summary>
-    /// Special header key used for the row number column.
+    ///     Special header key used for the row number column.
     /// </summary>
     public const string RowNumberKey = "__CsvRowNumber";
 
+    private string[] _csvFilePatterns = [];
+
+    private char _delimiter = ',';
+
     /// <summary>
-    /// Creates a reusable matcher for plain text or slash-delimited regex command targets.
+    ///     Gets the headers of the parsed CSV file.
+    /// </summary>
+    public List<string> Headers { get; private set; } = [];
+
+    /// <summary>
+    ///     Creates a reusable matcher for plain text or slash-delimited regex command targets.
     /// </summary>
     public static Func<string, bool> CreateSearchMatcher(string searchTarget)
     {
         if (IsRegexTarget(searchTarget) && Configuration.RegexSearch)
         {
-            string pattern = searchTarget[1..^1];
-            RegexOptions regexOptions = RegexOptions.CultureInvariant;
+            var pattern = searchTarget[1..^1];
+            var regexOptions = RegexOptions.CultureInvariant;
 
             if (Configuration.CaseInsensitiveSearch)
                 regexOptions |= RegexOptions.IgnoreCase;
@@ -94,23 +103,15 @@ public class Parser
     }
 
     /// <summary>
-    /// Checks if the search value is a regex target.
+    ///     Checks if the search value is a regex target.
     /// </summary>
     public static bool IsRegexTarget(string searchValue)
     {
         return searchValue is ['/', _, ..] && searchValue[^1] == '/';
     }
 
-    private char _delimiter = ',';
-    private string[] _csvFilePatterns = [];
-
     /// <summary>
-    /// Gets the headers of the parsed CSV file.
-    /// </summary>
-    public List<string> Headers { get; private set; } = [];
-
-    /// <summary>
-    /// Builds a <see cref="StreamReader"/> for the specified file path, handling compression if necessary.
+    ///     Builds a <see cref="StreamReader" /> for the specified file path, handling compression if necessary.
     /// </summary>
     private StreamReader BuildReader(string filePath)
     {
@@ -118,11 +119,9 @@ public class Parser
             throw new ArgumentException("File path cannot be null or whitespace", nameof(filePath));
 
         if (_csvFilePatterns.Length == 0)
-        {
             _csvFilePatterns = Configuration.CsvFilePatterns.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries);
-        }
 
-        FileStream stream = File.OpenRead(filePath);
+        var stream = File.OpenRead(filePath);
         try
         {
             if (!_csvFilePatterns.Contains("*" + Path.GetExtension(filePath), StringComparer.OrdinalIgnoreCase))
@@ -140,22 +139,22 @@ public class Parser
     }
 
     /// <summary>
-    /// Builds an async enumerator that reads lines from the specified CSV file.
+    ///     Builds an async enumerator that reads lines from the specified CSV file.
     /// </summary>
     internal async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
     {
         if (!File.Exists(filePath)) yield break;
 
-        using StreamReader reader = BuildReader(filePath);
+        using var reader = BuildReader(filePath);
         while (await reader.ReadLineAsync(cancel) is { } line) yield return line;
     }
 
     /// <summary>
-    /// Parses a single CSV line into a list of fields.
+    ///     Parses a single CSV line into a list of fields.
     /// </summary>
     internal List<string> ParseCsvLine(string line)
     {
-        List<string> fields = new List<string>(Headers.Count > 0 ? Headers.Count : Math.Max(1, line.Length / 8));
+        var fields = new List<string>(Headers.Count > 0 ? Headers.Count : Math.Max(1, line.Length / 8));
         if (line.Length == 0)
         {
             fields.Add(string.Empty);
@@ -163,23 +162,19 @@ public class Parser
         }
 
         ReadOnlySpan<char> lineSpan = line;
-        bool inQuotes = false;
-        int start = 0;
+        var inQuotes = false;
+        var start = 0;
 
-        for (int i = 0; i < lineSpan.Length; i++)
+        for (var i = 0; i < lineSpan.Length; i++)
         {
-            char c = lineSpan[i];
+            var c = lineSpan[i];
 
             if (c == '"')
             {
                 if (inQuotes && i + 1 < lineSpan.Length && lineSpan[i + 1] == '"')
-                {
                     i++;
-                }
                 else
-                {
                     inQuotes = !inQuotes;
-                }
             }
             else if (c == _delimiter && !inQuotes)
             {
@@ -193,7 +188,7 @@ public class Parser
     }
 
     /// <summary>
-    /// Unescapes a CSV field, handling quotes and double quotes.
+    ///     Unescapes a CSV field, handling quotes and double quotes.
     /// </summary>
     private static string UnescapeField(ReadOnlySpan<char> field)
     {
@@ -204,8 +199,7 @@ public class Parser
             if (field.IndexOf('"') == -1) return field.ToString();
 
             StringBuilder sb = new(field.Length);
-            for (int i = 0; i < field.Length; i++)
-            {
+            for (var i = 0; i < field.Length; i++)
                 if (field[i] == '"' && i + 1 < field.Length && field[i + 1] == '"')
                 {
                     sb.Append('"');
@@ -215,7 +209,6 @@ public class Parser
                 {
                     sb.Append(field[i]);
                 }
-            }
 
             return sb.ToString();
         }
@@ -224,22 +217,23 @@ public class Parser
     }
 
     /// <summary>
-    /// Builds a <see cref="CsvRow"/> from a list of values and a row number.
+    ///     Builds a <see cref="CsvRow" /> from a list of values and a row number.
     /// </summary>
-    internal CsvRow BuildRow(List<string> values, int rowNumber) => new([.. values], rowNumber);
+    internal CsvRow BuildRow(List<string> values, int rowNumber)
+    {
+        return new CsvRow([.. values], rowNumber);
+    }
 
     /// <summary>
-    /// Reads the headers from the specified CSV file.
+    ///     Reads the headers from the specified CSV file.
     /// </summary>
     public async Task ReadHeadersAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
-        string extension = Path.GetExtension(filePath).ToLowerInvariant();
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
         if (extension == ".gz")
-        {
             extension = Path.GetExtension(Path.GetFileNameWithoutExtension(filePath)).ToLowerInvariant();
-        }
 
         _delimiter = extension switch
         {
@@ -248,11 +242,11 @@ public class Parser
             _ => await DetectDelimiterAsync(filePath, cancellationToken)
         };
 
-        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
 
         if (await enumerator.MoveNextAsync())
         {
-            List<string> firstRow = ParseCsvLine(enumerator.Current);
+            var firstRow = ParseCsvLine(enumerator.Current);
             Headers = Configuration.FirstRowIsHeader
                 ? firstRow
                 : Enumerable.Range(0, firstRow.Count).Select(GetColumnLetter).ToList();
@@ -264,31 +258,27 @@ public class Parser
     }
 
     /// <summary>
-    /// Detects whether the delimiter is ',' or ';' based on frequency in the first line.
+    ///     Detects whether the delimiter is ',' or ';' based on frequency in the first line.
     /// </summary>
     private async Task<char> DetectDelimiterAsync(string filePath, CancellationToken cancellationToken)
     {
-        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
         if (!await enumerator.MoveNextAsync()) return ',';
-        
-        string firstLine = enumerator.Current;
-        int commaCount = 0;
-        int semicolonCount = 0;
-        bool inQuotes = false;
 
-        for (int i = 0; i < firstLine.Length; i++)
+        var firstLine = enumerator.Current;
+        var commaCount = 0;
+        var semicolonCount = 0;
+        var inQuotes = false;
+
+        for (var i = 0; i < firstLine.Length; i++)
         {
-            char c = firstLine[i];
+            var c = firstLine[i];
             if (c == '"')
             {
                 if (inQuotes && i + 1 < firstLine.Length && firstLine[i + 1] == '"')
-                {
                     i++;
-                }
                 else
-                {
                     inQuotes = !inQuotes;
-                }
             }
             else if (!inQuotes)
             {
@@ -303,6 +293,7 @@ public class Parser
                 }
             }
         }
+
         return semicolonCount > commaCount ? ';' : ',';
     }
 
@@ -311,7 +302,7 @@ public class Parser
     /// </summary>
     public static string GetColumnLetter(int columnIndex)
     {
-        string letter = string.Empty;
+        var letter = string.Empty;
         columnIndex++;
         while (columnIndex > 0)
         {
@@ -324,35 +315,29 @@ public class Parser
     }
 
     /// <summary>
-    /// Counts the total number of rows in the specified CSV file.
+    ///     Counts the total number of rows in the specified CSV file.
     /// </summary>
     public async Task<int> GetRowCountAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(filePath)) return 0;
-        int count = 0;
-        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
-        while (await enumerator.MoveNextAsync())
-        {
-            count++;
-        }
+        var count = 0;
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        while (await enumerator.MoveNextAsync()) count++;
 
-        if (Configuration.FirstRowIsHeader && count > 0)
-        {
-            count--;
-        }
+        if (Configuration.FirstRowIsHeader && count > 0) count--;
 
         return count;
     }
 
     /// <summary>
-    /// Reads a range of rows from the specified CSV file asynchronously.
+    ///     Reads a range of rows from the specified CSV file asynchronously.
     /// </summary>
     public async IAsyncEnumerable<CsvRow> ReadRangeAsyncEnumerable(string filePath, int startRow,
         int endRow, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
-        int currentRowNumber = 0;
-        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        var currentRowNumber = 0;
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
 
         if (startRow <= 0 || endRow < startRow) yield break;
 
@@ -368,19 +353,20 @@ public class Parser
     }
 
     /// <summary>
-    /// Reads a range of rows from the specified CSV file asynchronously and returns them as an <see cref="ObservableCollection{CsvRow}"/>.
+    ///     Reads a range of rows from the specified CSV file asynchronously and returns them as an
+    ///     <see cref="ObservableCollection{CsvRow}" />.
     /// </summary>
     public async Task<ObservableCollection<CsvRow>> ReadRangeAsync(string filePath, int startRow,
         int endRow, CancellationToken cancellationToken = default)
     {
         ObservableCollection<CsvRow> rows = [];
-        await foreach (CsvRow row in ReadRangeAsyncEnumerable(filePath, startRow, endRow, cancellationToken))
+        await foreach (var row in ReadRangeAsyncEnumerable(filePath, startRow, endRow, cancellationToken))
             rows.Add(row);
         return rows;
     }
 
     /// <summary>
-    /// Searches for matches in the CSV file asynchronously.
+    ///     Searches for matches in the CSV file asynchronously.
     /// </summary>
     public async IAsyncEnumerable<(CsvRow Row, string Header, string Value, int RowNumber)>
         ReadMatchesAsyncEnumerable(string filePath, Func<string, bool> matcher, List<string>? headersToSearch,
@@ -388,10 +374,10 @@ public class Parser
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await ReadHeadersAsync(filePath, cancellationToken);
-        List<string> headers = (headersToSearch ?? Headers.Prepend(RowNumberKey).ToList()).ToList();
-        await using IAsyncEnumerator<string> enumerator = BuildParserEnumerator(filePath, cancellationToken);
-        int currentRowNumber = 0;
-        int matchCount = 0;
+        var headers = (headersToSearch ?? Headers.Prepend(RowNumberKey).ToList()).ToList();
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+        var currentRowNumber = 0;
+        var matchCount = 0;
 
         if (headers.Count == 0) yield break;
 
@@ -401,18 +387,18 @@ public class Parser
             currentRowNumber++;
             if (currentRowNumber == 1 && Configuration.FirstRowIsHeader) continue;
 
-            CsvRow row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
-            bool foundInThisRow = false;
+            var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
+            var foundInThisRow = false;
 
             // BUG: The code was using 'headers' which might be the parser's internal 'Headers' list.
             // When iterating, it should only check the headers specified in 'headersToSearch'.
             // Wait, 'headers' IS derived from 'headersToSearch'.
 
-            foreach (string header in headers)
+            foreach (var header in headers)
             {
                 if (matchCount >= maxMatches) break;
 
-                string value = row[header, Headers];
+                var value = row[header, Headers];
                 if (!matcher(value)) continue;
 
                 matchCount++;
@@ -425,7 +411,7 @@ public class Parser
     }
 
     /// <summary>
-    /// Searches for matches in the CSV file asynchronously and returns them as a list.
+    ///     Searches for matches in the CSV file asynchronously and returns them as a list.
     /// </summary>
     public async Task<List<(CsvRow Row, string Header, string Value, int RowNumber)>>
         ReadMatchesAsync(string filePath, Func<string, bool> matcher, List<string>? headersToSearch, int maxMatches,
@@ -439,15 +425,15 @@ public class Parser
     }
 
     /// <summary>
-    /// Exports the specified rows to a CSV file.
+    ///     Exports the specified rows to a CSV file.
     /// </summary>
     public async Task ExportToCsvAsync(string filePath, IEnumerable<CsvRow> rows,
         List<string> visibleHeaders, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
-        string extension = Path.GetExtension(filePath).ToLowerInvariant();
-        char delimiter = extension switch
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        var delimiter = extension switch
         {
             ".tsv" => '\t',
             ".ssv" => ';',
@@ -460,17 +446,17 @@ public class Parser
             await writer.WriteLineAsync(string.Join(delimiter.ToString(),
                 visibleHeaders.Select(h => EscapeCsvField(h, delimiter))));
 
-        foreach (CsvRow row in rows)
+        foreach (var row in rows)
         {
             if (cancellationToken.IsCancellationRequested) return;
-            IEnumerable<string> values = visibleHeaders.Select(h => row[h, Headers]);
+            var values = visibleHeaders.Select(h => row[h, Headers]);
             await writer.WriteLineAsync(string.Join(delimiter.ToString(),
                 values.Select(v => EscapeCsvField(v, delimiter))));
         }
     }
 
     /// <summary>
-    /// Escapes a field for CSV, handling delimiters, quotes, and newlines.
+    ///     Escapes a field for CSV, handling delimiters, quotes, and newlines.
     /// </summary>
     private static string EscapeCsvField(string field, char delimiter)
     {
@@ -481,7 +467,7 @@ public class Parser
     }
 
     /// <summary>
-    /// Compares two CSV files and returns rows that are different.
+    ///     Compares two CSV files and returns rows that are different.
     /// </summary>
     public static async IAsyncEnumerable<ComparisonResult> CompareAsyncEnumerable(
         string leftFilePath,
@@ -494,14 +480,14 @@ public class Parser
         await leftParser.ReadHeadersAsync(leftFilePath, cancellationToken);
         await rightParser.ReadHeadersAsync(rightFilePath, cancellationToken);
 
-        await using IAsyncEnumerator<string> leftEnumerator =
+        await using var leftEnumerator =
             leftParser.BuildParserEnumerator(leftFilePath, cancellationToken);
-        await using IAsyncEnumerator<string> rightEnumerator =
+        await using var rightEnumerator =
             rightParser.BuildParserEnumerator(rightFilePath, cancellationToken);
 
-        int currentRowNumber = 0;
-        bool leftHasMore = true;
-        bool rightHasMore = true;
+        var currentRowNumber = 0;
+        var leftHasMore = true;
+        var rightHasMore = true;
 
         if (Configuration.FirstRowIsHeader)
         {
@@ -518,10 +504,10 @@ public class Parser
 
             currentRowNumber++;
 
-            CsvRow? leftRow = leftHasMore
+            var leftRow = leftHasMore
                 ? leftParser.BuildRow(leftParser.ParseCsvLine(leftEnumerator.Current), currentRowNumber)
                 : null;
-            CsvRow? rightRow = rightHasMore
+            var rightRow = rightHasMore
                 ? rightParser.BuildRow(rightParser.ParseCsvLine(rightEnumerator.Current), currentRowNumber)
                 : null;
 
@@ -535,18 +521,16 @@ public class Parser
             }
             else if (leftRow != null && rightRow != null)
             {
-                bool areEqual = leftRow.Values.SequenceEqual(rightRow.Values);
+                var areEqual = leftRow.Values.SequenceEqual(rightRow.Values);
                 if (!areEqual)
-                {
                     yield return new ComparisonResult(currentRowNumber, leftRow, rightRow, ComparisonStatus.Different);
-                }
             }
         }
     }
 }
 
 /// <summary>
-/// Represents the status of a row comparison.
+///     Represents the status of a row comparison.
 /// </summary>
 public enum ComparisonStatus
 {
@@ -557,7 +541,7 @@ public enum ComparisonStatus
 }
 
 /// <summary>
-/// Represents the result of a comparison between two rows.
+///     Represents the result of a comparison between two rows.
 /// </summary>
 /// <param name="RowNumber">The row number.</param>
 /// <param name="LeftRow">The row from the left file.</param>

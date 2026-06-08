@@ -576,10 +576,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             ]);
 
             var results = new List<ComparisonResult>();
-            await foreach (var result in Parser.CompareAsyncEnumerable(leftFile, rightFile))
-            {
-                results.Add(result);
-            }
+            await foreach (var result in Parser.CompareAsyncEnumerable(leftFile, rightFile)) results.Add(result);
 
             // Alice is same, so not in results
             // Bob vs Robert is different (Row 2)
