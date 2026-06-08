@@ -495,12 +495,12 @@ public class Parser
             rightHasMore = await rightEnumerator.MoveNextAsync();
         }
 
-        while ((leftHasMore || rightHasMore) && !cancellationToken.IsCancellationRequested)
+        while (leftHasMore && rightHasMore && !cancellationToken.IsCancellationRequested)
         {
-            leftHasMore = leftHasMore && await leftEnumerator.MoveNextAsync();
-            rightHasMore = rightHasMore && await rightEnumerator.MoveNextAsync();
+            leftHasMore = await leftEnumerator.MoveNextAsync();
+            rightHasMore = await rightEnumerator.MoveNextAsync();
 
-            if (!leftHasMore && !rightHasMore) break;
+            if (!leftHasMore || !rightHasMore) break;
 
             currentRowNumber++;
 

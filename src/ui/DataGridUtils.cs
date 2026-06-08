@@ -34,16 +34,19 @@ public static class DataGridUtils
         for (var i = 0; i < parser.Headers.Count; i++)
         {
             var header = parser.Headers[i];
-            var columnLetter = Parser.GetColumnLetter(i);
+            var columnIdentifier = Configuration.UseNumbersForColumns
+                ? i.ToString()
+                : Parser.GetColumnLetter(i);
+
             var column = new DataGridTextColumn
             {
-                Header = $"{columnLetter}: {header}",
+                Header = $"{columnIdentifier}: {header}",
                 Binding = new Binding($"Values[{i}]"),
                 SortMemberPath = $"Values[{i}]"
             };
             dataGrid.Columns.Add(column);
             if (columnsByName != null) columnsByName[header] = column;
-            if (columnsByLetter != null) columnsByLetter[columnLetter] = column;
+            if (columnsByLetter != null) columnsByLetter[columnIdentifier] = column;
         }
     }
 

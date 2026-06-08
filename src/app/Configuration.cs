@@ -61,6 +61,11 @@ public static class Configuration
     public static bool FirstRowIsHeader => GetBool(nameof(FirstRowIsHeader), true);
 
     /// <summary>
+    ///     Gets a value indicating whether columns should be identified by numbers instead of letters.
+    /// </summary>
+    public static bool UseNumbersForColumns => GetBool(nameof(UseNumbersForColumns), false);
+
+    /// <summary>
     ///     Gets the file patterns to match CSV files.
     /// </summary>
     public static string CsvFilePatterns => GetString(nameof(CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv");
@@ -88,6 +93,8 @@ public static class Configuration
         new(nameof(CreateColumnHeaders), "Boolean", "true", "Whether to move the first row into column headers."),
         new(nameof(CreateRowNumbers), "Boolean", "true", "Whether to add an automatic numbers column."),
         new(nameof(FirstRowIsHeader), "Boolean", "true", "Whether to treat the first row as a header."),
+        new(nameof(UseNumbersForColumns), "Boolean", "false",
+            "Whether to use numbers instead of letters to identify columns."),
         new(nameof(CsvFilePatterns), "String", "*.csv;*.gz;*.ssv;*.tsv", "File patterns to match CSV files."),
         new(nameof(Theme), "String", "Dark", "Theme variant: Light or Dark.")
     ];

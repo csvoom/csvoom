@@ -302,6 +302,12 @@ public partial class MainWindow : Window
             CommandExampleTextBlock.Text = string.Empty;
         else
             CommandTextBox_TextChanged(CommandTextBox, new TextChangedEventArgs(TextBox.TextChangedEvent));
+
+        if (_currentFilePath is not null)
+        {
+            DataGridUtils.InitializeColumns(CsvDataGrid, Parser, _columnsByName, _columnsByLetter);
+            _ = UpdateTotalRowCountAsync();
+        }
     }
 
     // Commands
@@ -849,8 +855,12 @@ public partial class MainWindow : Window
             if (_currentFilePath is null) return;
             var rowCount = await Parser.GetRowCountAsync(_currentFilePath);
             var columnCount = Parser.Headers.Count;
+            var columnIdentifier = Configuration.UseNumbersForColumns
+                ? (columnCount - 1).ToString()
+                : Parser.GetColumnLetter(columnCount - 1);
+
             var columnRange = columnCount > 0
-                ? $" - Columns: {columnCount} (A-{Parser.GetColumnLetter(columnCount - 1)})"
+                ? $" - Columns: {columnCount} ({(Configuration.UseNumbersForColumns ? "0" : "A")}-{columnIdentifier})"
                 : string.Empty;
 
             TotalRowsTextBlock.Text = $"Rows: {rowCount}{columnRange}";
@@ -882,6 +892,11 @@ public partial class MainWindow : Window
 
         // If numeric, try by index
         if (!int.TryParse(normalized, out var index)) return null;
+
+        if (Configuration.UseNumbersForColumns)
+            if (_columnsByLetter.TryGetValue(normalized, out var columnByNumber))
+                return columnByNumber;
+
         long gridIndex = index;
         if (gridIndex >= 0 && gridIndex < CsvDataGrid.Columns.Count)
             return CsvDataGrid.Columns[(int)gridIndex];
