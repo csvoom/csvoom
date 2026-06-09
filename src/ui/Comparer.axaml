@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:CSVoom"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="CSVoom.Comparer"
         Title="Comparer">
@@ -14,8 +15,37 @@
         </StackPanel>
 
         <!-- Main content -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,4,*">
-            <DataGrid Grid.Column="0" x:Name="LeftDataGrid"
+        <Grid Grid.Row="1" ColumnDefinitions="300,4,*,4,*">
+            <DataGrid Grid.Column="0" x:Name="DifferencesDataGrid"
+                      CanUserSortColumns="True"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      GridLinesVisibility="All"
+                      HeadersVisibility="All"
+                      x:DataType="local:DifferenceItem">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Go" Width="Auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="→" 
+                                        Click="NavigateToDifference_Click" 
+                                        Tag="{Binding}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Padding="4,0" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Row" Binding="{Binding Row}" Width="Auto" />
+                    <DataGridTextColumn Header="Col" Binding="{Binding Column}" Width="Auto" />
+                    <DataGridTextColumn Header="Left" Binding="{Binding LeftValue}" Width="*" />
+                    <DataGridTextColumn Header="Right" Binding="{Binding RightValue}" Width="*" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <GridSplitter Grid.Column="1" Background="Gray" ResizeDirection="Columns" />
+
+            <DataGrid Grid.Column="2" x:Name="LeftDataGrid"
                       CanUserSortColumns="False"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"
@@ -23,9 +53,9 @@
                       HeadersVisibility="All"
                       SelectionMode="Extended" />
 
-            <GridSplitter Grid.Column="1" Background="Gray" ResizeDirection="Columns" />
+            <GridSplitter Grid.Column="3" Background="Gray" ResizeDirection="Columns" />
 
-            <DataGrid Grid.Column="2" x:Name="RightDataGrid"
+            <DataGrid Grid.Column="4" x:Name="RightDataGrid"
                       CanUserSortColumns="False"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"

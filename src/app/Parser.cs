@@ -521,9 +521,20 @@ public class Parser
             }
             else if (leftRow != null && rightRow != null)
             {
-                var areEqual = leftRow.Values.SequenceEqual(rightRow.Values);
-                if (!areEqual)
-                    yield return new ComparisonResult(currentRowNumber, leftRow, rightRow, ComparisonStatus.Different);
+                var diffColumns = new List<int>();
+                var maxCols = Math.Max(leftRow.Values.Length, rightRow.Values.Length);
+                for (var i = 0; i < maxCols; i++)
+                {
+                    var leftVal = i < leftRow.Values.Length ? leftRow.Values[i] : null;
+                    var rightVal = i < rightRow.Values.Length ? rightRow.Values[i] : null;
+                    if (leftVal != rightVal) diffColumns.Add(i);
+                }
+
+                if (diffColumns.Count > 0)
+                    yield return new ComparisonResult(currentRowNumber, leftRow, rightRow, ComparisonStatus.Different,
+                        diffColumns);
+                else
+                    yield return new ComparisonResult(currentRowNumber, leftRow, rightRow, ComparisonStatus.Equal);
             }
         }
     }
@@ -547,4 +558,5 @@ public enum ComparisonStatus
 /// <param name="LeftRow">The row from the left file.</param>
 /// <param name="RightRow">The row from the right file.</param>
 /// <param name="Status">The comparison status.</param>
-public record ComparisonResult(int RowNumber, CsvRow? LeftRow, CsvRow? RightRow, ComparisonStatus Status);
+/// <param name="DifferentColumns">The indices of the columns that are different.</param>
+public record ComparisonResult(int RowNumber, CsvRow? LeftRow, CsvRow? RightRow, ComparisonStatus Status, List<int>? DifferentColumns = null);

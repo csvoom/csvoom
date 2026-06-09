@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Collections;
@@ -17,6 +18,7 @@ public partial class Comparer : Window
     private readonly ObservableCollection<CsvRow> _leftVisibleRows = [];
     private readonly Parser _rightParser = new();
     private readonly ObservableCollection<CsvRow> _rightVisibleRows = [];
+    private readonly ObservableCollection<DifferenceItem> _differences = [];
     private CancellationTokenSource? _comparisonCts;
     private bool _isBusy;
     private string? _leftFilePath;
@@ -27,6 +29,7 @@ public partial class Comparer : Window
         InitializeComponent();
         LeftDataGrid.ItemsSource = new DataGridCollectionView(_leftVisibleRows);
         RightDataGrid.ItemsSource = new DataGridCollectionView(_rightVisibleRows);
+        DifferencesDataGrid.ItemsSource = new DataGridCollectionView(_differences);
     }
 
     private async void ImportLeft_Click(object? sender, RoutedEventArgs e)
@@ -99,6 +102,7 @@ public partial class Comparer : Window
         _comparisonCts = new CancellationTokenSource();
         _leftVisibleRows.Clear();
         _rightVisibleRows.Clear();
+        _differences.Clear();
 
         try
         {
@@ -111,6 +115,32 @@ public partial class Comparer : Window
             {
                 if (result.LeftRow != null) _leftVisibleRows.Add(result.LeftRow);
                 if (result.RightRow != null) _rightVisibleRows.Add(result.RightRow);
+
+                if (result.Status == ComparisonStatus.Different && result.DifferentColumns != null)
+                {
+                    foreach (var colIndex in result.DifferentColumns)
+                    {
+                        var leftValue = colIndex < (result.LeftRow?.Values.Length ?? 0) ? result.LeftRow!.Values[colIndex] : "";
+                        var rightValue = colIndex < (result.RightRow?.Values.Length ?? 0) ? result.RightRow!.Values[colIndex] : "";
+                        var colHeader = colIndex < _leftParser.Headers.Count ? _leftParser.Headers[colIndex] : (colIndex + 1).ToString();
+
+                        _differences.Add(new DifferenceItem(
+                            result.RowNumber,
+                            colHeader,
+                            colIndex,
+                            leftValue,
+                            rightValue
+                        ));
+                    }
+                }
+                else if (result.Status == ComparisonStatus.LeftOnly)
+                {
+                    _differences.Add(new DifferenceItem(result.RowNumber, "Row", -1, "Only in Left", ""));
+                }
+                else if (result.Status == ComparisonStatus.RightOnly)
+                {
+                    _differences.Add(new DifferenceItem(result.RowNumber, "Row", -1, "", "Only in Right"));
+                }
             }
 
             StatusTextBlock.Text = $"Comparison complete. Found {_leftVisibleRows.Count} differences.";
@@ -137,4 +167,40 @@ public partial class Comparer : Window
         ImportLeftButton.IsEnabled = !isBusy;
         ImportRightButton.IsEnabled = !isBusy;
     }
+
+    private void NavigateToDifference_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: DifferenceItem item })
+        {
+            // Rows are 1-indexed in RowNumber, but 0-indexed in DataGrid
+            var rowIndex = item.Row - 1;
+
+            if (rowIndex >= 0)
+            {
+                var leftItems = LeftDataGrid.ItemsSource?.Cast<object>().ToList();
+                if (leftItems != null && rowIndex < leftItems.Count)
+                {
+                    LeftDataGrid.SelectedIndex = rowIndex;
+                    LeftDataGrid.ScrollIntoView(leftItems[rowIndex], null);
+                }
+
+                var rightItems = RightDataGrid.ItemsSource?.Cast<object>().ToList();
+                if (rightItems != null && rowIndex < rightItems.Count)
+                {
+                    RightDataGrid.SelectedIndex = rowIndex;
+                    RightDataGrid.ScrollIntoView(rightItems[rowIndex], null);
+                }
+
+                if (item.ColumnIndex >= 0)
+                {
+                    if (item.ColumnIndex < LeftDataGrid.Columns.Count)
+                        LeftDataGrid.ScrollIntoView(null, LeftDataGrid.Columns[item.ColumnIndex]);
+                    if (item.ColumnIndex < RightDataGrid.Columns.Count)
+                        RightDataGrid.ScrollIntoView(null, RightDataGrid.Columns[item.ColumnIndex]);
+                }
+            }
+        }
+    }
 }
+
+public record DifferenceItem(int Row, string Column, int ColumnIndex, string LeftValue, string RightValue);
