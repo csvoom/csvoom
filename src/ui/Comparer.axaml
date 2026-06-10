@@ -16,52 +16,45 @@
 
         <!-- Main content -->
         <Grid Grid.Row="1" ColumnDefinitions="300,4,*,4,*">
-            <DataGrid Grid.Column="0" x:Name="DifferencesDataGrid"
-                      CanUserSortColumns="True"
-                      AutoGenerateColumns="False"
-                      IsReadOnly="True"
-                      GridLinesVisibility="All"
-                      HeadersVisibility="All"
-                      x:DataType="local:DifferenceItem">
-                <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="Go" Width="Auto">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <Button Content="→" 
-                                        Click="NavigateToDifference_Click" 
-                                        Tag="{Binding}"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Padding="4,0" />
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Row" Binding="{Binding Row}" Width="Auto" />
-                    <DataGridTextColumn Header="Col" Binding="{Binding Column}" Width="Auto" />
-                    <DataGridTextColumn Header="Left" Binding="{Binding LeftValue}" Width="*" />
-                    <DataGridTextColumn Header="Right" Binding="{Binding RightValue}" Width="*" />
-                </DataGrid.Columns>
-            </DataGrid>
+            <ScrollViewer Grid.Column="0">
+                <ItemsControl x:Name="DifferencesItemsControl">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="local:DifferenceItem">
+                            <Button Content="{Binding DisplayLabel}"
+                                    Click="NavigateToDifference_Click"
+                                    Tag="{Binding}"
+                                    HorizontalAlignment="Stretch"
+                                    Margin="2" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
 
             <GridSplitter Grid.Column="1" Background="Gray" ResizeDirection="Columns" />
 
-            <DataGrid Grid.Column="2" x:Name="LeftDataGrid"
-                      CanUserSortColumns="False"
-                      AutoGenerateColumns="False"
-                      IsReadOnly="True"
-                      GridLinesVisibility="All"
-                      HeadersVisibility="All"
-                      SelectionMode="Extended" />
+            <Grid Grid.Column="2" RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" x:Name="LeftFileNameTextBlock" FontWeight="Bold" Margin="4" TextTrimming="CharacterEllipsis" />
+                <DataGrid Grid.Row="1" x:Name="LeftDataGrid"
+                          CanUserSortColumns="False"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          GridLinesVisibility="All"
+                          HeadersVisibility="All"
+                          SelectionMode="Extended" />
+            </Grid>
 
             <GridSplitter Grid.Column="3" Background="Gray" ResizeDirection="Columns" />
 
-            <DataGrid Grid.Column="4" x:Name="RightDataGrid"
-                      CanUserSortColumns="False"
-                      AutoGenerateColumns="False"
-                      IsReadOnly="True"
-                      GridLinesVisibility="All"
-                      HeadersVisibility="All"
-                      SelectionMode="Extended" />
+            <Grid Grid.Column="4" RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" x:Name="RightFileNameTextBlock" FontWeight="Bold" Margin="4" TextTrimming="CharacterEllipsis" />
+                <DataGrid Grid.Row="1" x:Name="RightDataGrid"
+                          CanUserSortColumns="False"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          GridLinesVisibility="All"
+                          HeadersVisibility="All"
+                          SelectionMode="Extended" />
+            </Grid>
         </Grid>
 
         <!-- Status bar -->
