@@ -36,7 +36,8 @@ public partial class Comparer : Window
     {
         _leftFilePath = await OpenFileAsync("Import Left CSV");
         if (_leftFilePath == null) return;
-        LeftFileNameTextBlock.Text = System.IO.Path.GetFileName(_leftFilePath);
+        LeftFileNameTextBlock.Text = _leftFilePath;
+        ToolTip.SetTip(LeftFileNameTextBlock, _leftFilePath);
         await LoadFileAsync(_leftFilePath, _leftParser, LeftDataGrid, _leftVisibleRows);
     }
 
@@ -45,7 +46,8 @@ public partial class Comparer : Window
         _rightFilePath = await OpenFileAsync("Import Right CSV");
         if (_rightFilePath != null)
         {
-            RightFileNameTextBlock.Text = System.IO.Path.GetFileName(_rightFilePath);
+            RightFileNameTextBlock.Text = _rightFilePath;
+            ToolTip.SetTip(RightFileNameTextBlock, _rightFilePath);
             await LoadFileAsync(_rightFilePath, _rightParser, RightDataGrid, _rightVisibleRows);
         }
     }
@@ -77,12 +79,14 @@ public partial class Comparer : Window
         try
         {
             StatusTextBlock.Text = $"Loading {filePath}...";
+            ToolTip.SetTip(StatusTextBlock, filePath);
             await parser.ReadHeadersAsync(filePath);
             DataGridUtils.InitializeColumns(dataGrid, parser);
             visibleRows.Clear();
             var rows = await parser.ReadRangeAsync(filePath, 1, Configuration.AutoLoadRows);
             foreach (var row in rows) visibleRows.Add(row);
             StatusTextBlock.Text = $"Loaded {filePath}.";
+            ToolTip.SetTip(StatusTextBlock, filePath);
         }
         catch (Exception ex)
         {
@@ -128,26 +132,20 @@ public partial class Comparer : Window
                     {
                         foreach (var colIndex in result.DifferentColumns)
                         {
-                            var leftValue = colIndex < (result.LeftRow?.Values.Length ?? 0) ? result.LeftRow!.Values[colIndex] : "";
-                            var rightValue = colIndex < (result.RightRow?.Values.Length ?? 0) ? result.RightRow!.Values[colIndex] : "";
                             var colHeader = colIndex < _leftParser.Headers.Count ? _leftParser.Headers[colIndex] : (colIndex + 1).ToString();
 
                             _differences.Add(new DifferenceItem(
                                 result.RowNumber,
                                 colHeader,
-                                colIndex,
-                                leftValue,
-                                rightValue
+                                colIndex
                             ));
                         }
 
                         break;
                     }
                     case ComparisonStatus.LeftOnly:
-                        _differences.Add(new DifferenceItem(result.RowNumber, "Row", -1, "Only in Left", ""));
-                        break;
                     case ComparisonStatus.RightOnly:
-                        _differences.Add(new DifferenceItem(result.RowNumber, "Row", -1, "", "Only in Right"));
+                        _differences.Add(new DifferenceItem(result.RowNumber, "Row", -1));
                         break;
                     case ComparisonStatus.Equal:
                         break;
@@ -191,8 +189,11 @@ public partial class Comparer : Window
     {
         if (sender is Button { Tag: DifferenceItem item })
         {
-            // Rows are 1-indexed in RowNumber, but 0-indexed in DataGrid
-            var rowIndex = item.Row - 1;
+            // Rows are 1-indexed in the file.
+            // DataGrid items are 0-indexed. Index 0 corresponds to the first row of data.
+            // If the first row is a header (RowNumber 1), then RowNumber 2 is index 0.
+            // If the first row is NOT a header (RowNumber 1), then RowNumber 1 is index 0.
+            var rowIndex = Configuration.FirstRowIsHeader ? item.Row - 2 : item.Row - 1;
 
             if (rowIndex < 0) return;
             var leftItems = LeftDataGrid.ItemsSource?.Cast<object>().ToList();
@@ -210,15 +211,16 @@ public partial class Comparer : Window
             }
 
             if (item.ColumnIndex < 0) return;
-            if (item.ColumnIndex < LeftDataGrid.Columns.Count)
-                LeftDataGrid.ScrollIntoView(null, LeftDataGrid.Columns[item.ColumnIndex]);
-            if (item.ColumnIndex < RightDataGrid.Columns.Count)
-                RightDataGrid.ScrollIntoView(null, RightDataGrid.Columns[item.ColumnIndex]);
+            var gridColumnIndex = item.ColumnIndex + DataGridUtils.RowNumberColumnOffset;
+            if (gridColumnIndex < LeftDataGrid.Columns.Count)
+                LeftDataGrid.ScrollIntoView(null, LeftDataGrid.Columns[gridColumnIndex]);
+            if (gridColumnIndex < RightDataGrid.Columns.Count)
+                RightDataGrid.ScrollIntoView(null, RightDataGrid.Columns[gridColumnIndex]);
         }
     }
 }
 
-public record DifferenceItem(int Row, string Column, int ColumnIndex, string LeftValue, string RightValue)
+public record DifferenceItem(int Row, string Column, int ColumnIndex)
 {
     public string DisplayLabel => ColumnIndex >= 0
         ? $"Row: {Row} - Column: {Parser.GetColumnLetter(ColumnIndex)}"

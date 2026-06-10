@@ -649,11 +649,12 @@ public partial class MainWindow : Window
             CsvDataGrid.FrozenColumnCount = 0;
             _currentFilePath = files[0].Path.LocalPath;
             _currentFileName = files[0].Name;
-            MainWindowElement.Title = $"{_currentFileName}";
+            MainWindowElement.Title = $"{_currentFilePath}";
             _gridView.Filter = null!;
             _visibleRows.Clear();
 
             StatusTextBlock.Text = $"Loading {_currentFileName}...";
+            ToolTip.SetTip(StatusTextBlock, _currentFilePath);
 
             await Parser.ReadHeadersAsync(_currentFilePath, cancellationToken);
 
@@ -709,6 +710,7 @@ public partial class MainWindow : Window
             if (file is null) return;
 
             StatusTextBlock.Text = "Exporting...";
+            ToolTip.SetTip(StatusTextBlock, file.Path.LocalPath);
 
             // Find visible headers (excluding RowNumberKey)
             List<string> visibleHeaders = [];
@@ -721,6 +723,7 @@ public partial class MainWindow : Window
 
             await Parser.ExportToCsvAsync(file.Path.LocalPath, rowsToExport, visibleHeaders, cancellationToken);
             StatusTextBlock.Text = $"Exported to {file.Name}";
+            ToolTip.SetTip(StatusTextBlock, file.Path.LocalPath);
         }
         catch (OperationCanceledException)
         {

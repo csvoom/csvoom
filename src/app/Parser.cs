@@ -485,7 +485,7 @@ public class Parser
         await using var rightEnumerator =
             rightParser.BuildParserEnumerator(rightFilePath, cancellationToken);
 
-        var currentRowNumber = 0;
+        var currentRowNumber = Configuration.FirstRowIsHeader ? 1 : 0;
         var leftHasMore = true;
         var rightHasMore = true;
 

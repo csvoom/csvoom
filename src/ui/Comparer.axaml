@@ -30,8 +30,6 @@
                 </ItemsControl>
             </ScrollViewer>
 
-            <GridSplitter Grid.Column="1" Background="Gray" ResizeDirection="Columns" />
-
             <Grid Grid.Column="2" RowDefinitions="Auto,*">
                 <TextBlock Grid.Row="0" x:Name="LeftFileNameTextBlock" FontWeight="Bold" Margin="4" TextTrimming="CharacterEllipsis" />
                 <DataGrid Grid.Row="1" x:Name="LeftDataGrid"
@@ -42,8 +40,6 @@
                           HeadersVisibility="All"
                           SelectionMode="Extended" />
             </Grid>
-
-            <GridSplitter Grid.Column="3" Background="Gray" ResizeDirection="Columns" />
 
             <Grid Grid.Column="4" RowDefinitions="Auto,*">
                 <TextBlock Grid.Row="0" x:Name="RightFileNameTextBlock" FontWeight="Bold" Margin="4" TextTrimming="CharacterEllipsis" />
