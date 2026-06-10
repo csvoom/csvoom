@@ -28,8 +28,8 @@ public static class DataGridUtils
             CanUserSort = false
         };
         dataGrid.Columns.Add(rowNumberColumn);
-        if (columnsByName != null) columnsByName[Parser.RowNumberKey] = rowNumberColumn;
-        if (columnsByLetter != null) columnsByLetter[""] = rowNumberColumn;
+        columnsByName?[Parser.RowNumberKey] = rowNumberColumn;
+        columnsByLetter?[""] = rowNumberColumn;
 
         for (var i = 0; i < parser.Headers.Count; i++)
         {
@@ -45,8 +45,8 @@ public static class DataGridUtils
                 SortMemberPath = $"Values[{i}]"
             };
             dataGrid.Columns.Add(column);
-            if (columnsByName != null) columnsByName[header] = column;
-            if (columnsByLetter != null) columnsByLetter[columnIdentifier] = column;
+            columnsByName?[header] = column;
+            columnsByLetter?[columnIdentifier] = column;
         }
     }
 

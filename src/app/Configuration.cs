@@ -11,6 +11,11 @@ namespace CSVoom.app;
 public static class Configuration
 {
     /// <summary>
+    ///     Gets the application version.
+    /// </summary>
+    public static string Version => "1.0.0";
+
+    /// <summary>
     ///     Gets the number of rows to load automatically.
     /// </summary>
     public static int AutoLoadRows => GetInt(nameof(AutoLoadRows), 10000, 1);

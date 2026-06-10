@@ -82,6 +82,7 @@ public partial class MainWindow : Window
         }
 
         ShowInlinePanel(SettingsPanel);
+        VersionTextBlock.Text = $"v{Configuration.Version}";
         _editedSettings.Clear();
         SettingsFieldsContainer.Children.Clear();
 
