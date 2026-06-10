@@ -133,7 +133,7 @@ public partial class Comparer : Window
                         foreach (var colIndex in result.DifferentColumns)
                         {
                             var colHeader = colIndex < _leftParser.Headers.Count ? _leftParser.Headers[colIndex] : (colIndex + 1).ToString();
-                            _differences.Add(new DifferenceItem(1, $"[ANOMALOUS] {colHeader}", colIndex));
+                            _differences.Add(new DifferenceItem(1, $"[ANOMALOUS] {colHeader}", colIndex, "Column not found"));
                         }
                         break;
                     }
@@ -146,15 +146,18 @@ public partial class Comparer : Window
                             _differences.Add(new DifferenceItem(
                                 result.RowNumber,
                                 colHeader,
-                                colIndex
+                                colIndex,
+                                "Value mismatch"
                             ));
                         }
 
                         break;
                     }
                     case ComparisonStatus.LeftOnly:
+                        _differences.Add(new DifferenceItem(result.RowNumber, "Row", -1, "Row only in left file"));
+                        break;
                     case ComparisonStatus.RightOnly:
-                        _differences.Add(new DifferenceItem(result.RowNumber, "Row", -1));
+                        _differences.Add(new DifferenceItem(result.RowNumber, "Row", -1, "Row only in right file"));
                         break;
                     case ComparisonStatus.Equal:
                         break;
@@ -229,9 +232,9 @@ public partial class Comparer : Window
     }
 }
 
-public record DifferenceItem(int Row, string Column, int ColumnIndex)
+public record DifferenceItem(int Row, string Column, int ColumnIndex, string Description)
 {
     public string DisplayLabel => ColumnIndex >= 0
-        ? $"Row: {Row} - Column: {Parser.GetColumnLetter(ColumnIndex)}"
-        : $"Row: {Row} - {Column}";
+        ? $"Row: {Row} - Col: {Parser.GetColumnLetter(ColumnIndex)} ({Description})"
+        : $"Row: {Row} - {Description}";
 }
