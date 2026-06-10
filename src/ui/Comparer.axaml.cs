@@ -128,6 +128,15 @@ public partial class Comparer : Window
 
                 switch (result.Status)
                 {
+                    case ComparisonStatus.AnomalousColumn when result.DifferentColumns != null:
+                    {
+                        foreach (var colIndex in result.DifferentColumns)
+                        {
+                            var colHeader = colIndex < _leftParser.Headers.Count ? _leftParser.Headers[colIndex] : (colIndex + 1).ToString();
+                            _differences.Add(new DifferenceItem(1, $"[ANOMALOUS] {colHeader}", colIndex));
+                        }
+                        break;
+                    }
                     case ComparisonStatus.Different when result.DifferentColumns != null:
                     {
                         foreach (var colIndex in result.DifferentColumns)

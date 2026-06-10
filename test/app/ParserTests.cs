@@ -578,14 +578,64 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
             var results = new List<ComparisonResult>();
             await foreach (var result in Parser.CompareAsyncEnumerable(leftFile, rightFile)) results.Add(result);
 
-            // Alice is same, so not in results
-            // Bob vs Robert is different (Row 2)
-            // Charlie vs David is different (Row 3)
+            // Alice is same, but CompareAsyncEnumerable yields Equal status results too now.
+            // Wait, looking at the code:
+            // if (diffColumns.Count > 0) yield return Different
+            // else yield return Equal
+            
+            // Actually I should check what results contains.
+            // Alice (Equal), Bob (Different), Charlie (Different)
+            
+            Assert.Equal(3, results.Count);
 
-            Assert.Equal(2, results.Count);
-
-            Assert.Contains(results, r => r.RowNumber == 2 && r.Status == ComparisonStatus.Different);
+            Assert.Contains(results, r => r.RowNumber == 2 && r.Status == ComparisonStatus.Equal);
             Assert.Contains(results, r => r.RowNumber == 3 && r.Status == ComparisonStatus.Different);
+            Assert.Contains(results, r => r.RowNumber == 4 && r.Status == ComparisonStatus.Different);
+        }
+        finally
+        {
+            if (File.Exists(leftFile)) File.Delete(leftFile);
+            if (File.Exists(rightFile)) File.Delete(rightFile);
+        }
+    }
+
+    [Fact]
+    public async Task TestCompareAsyncEnumerable_HeaderMismatch()
+    {
+        var leftFile = Path.GetTempFileName() + ".csv";
+        var rightFile = Path.GetTempFileName() + ".csv";
+
+        try
+        {
+            await File.WriteAllLinesAsync(leftFile,
+            [
+                "id,name,age",
+                "1,Alice,30",
+                "2,Bob,25"
+            ]);
+
+            await File.WriteAllLinesAsync(rightFile,
+            [
+                "id,full_name,age",
+                "1,Alice,30",
+                "2,Robert,25"
+            ]);
+
+            var results = new List<ComparisonResult>();
+            await foreach (var result in Parser.CompareAsyncEnumerable(leftFile, rightFile)) results.Add(result);
+
+            // Row 1: AnomalousColumn (column 1: name vs full_name)
+            // Row 1: Equal (data for id and age match)
+            // Row 2: Equal (data for id and age match, name/full_name is ignored)
+
+            Assert.Equal(3, results.Count);
+            
+            Assert.Contains(results, r => r.RowNumber == 1 && r.Status == ComparisonStatus.AnomalousColumn);
+            var anomalous = results.First(r => r.Status == ComparisonStatus.AnomalousColumn);
+            Assert.Single(anomalous.DifferentColumns!);
+            Assert.Equal(1, anomalous.DifferentColumns![0]);
+
+            Assert.All(results.Where(r => r.Status == ComparisonStatus.Equal), r => Assert.True(r.RowNumber >= 1));
         }
         finally
         {

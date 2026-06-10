@@ -480,6 +480,31 @@ public class Parser
         await leftParser.ReadHeadersAsync(leftFilePath, cancellationToken);
         await rightParser.ReadHeadersAsync(rightFilePath, cancellationToken);
 
+        var ignoredColumns = new HashSet<int>();
+
+        if (Configuration.FirstRowIsHeader)
+        {
+            var maxHeaderCols = Math.Max(leftParser.Headers.Count, rightParser.Headers.Count);
+            var anomalousColumns = new List<int>();
+
+            for (var i = 0; i < maxHeaderCols; i++)
+            {
+                var leftHeader = i < leftParser.Headers.Count ? leftParser.Headers[i] : null;
+                var rightHeader = i < rightParser.Headers.Count ? rightParser.Headers[i] : null;
+
+                if (leftHeader != rightHeader)
+                {
+                    anomalousColumns.Add(i);
+                    ignoredColumns.Add(i);
+                }
+            }
+
+            if (anomalousColumns.Count > 0)
+            {
+                yield return new ComparisonResult(1, null, null, ComparisonStatus.AnomalousColumn, anomalousColumns);
+            }
+        }
+
         await using var leftEnumerator =
             leftParser.BuildParserEnumerator(leftFilePath, cancellationToken);
         await using var rightEnumerator =
@@ -525,6 +550,8 @@ public class Parser
                 var maxCols = Math.Max(leftRow.Values.Length, rightRow.Values.Length);
                 for (var i = 0; i < maxCols; i++)
                 {
+                    if (ignoredColumns.Contains(i)) continue;
+
                     var leftVal = i < leftRow.Values.Length ? leftRow.Values[i] : null;
                     var rightVal = i < rightRow.Values.Length ? rightRow.Values[i] : null;
                     if (leftVal != rightVal) diffColumns.Add(i);
@@ -548,7 +575,8 @@ public enum ComparisonStatus
     Equal,
     Different,
     LeftOnly,
-    RightOnly
+    RightOnly,
+    AnomalousColumn
 }
 
 /// <summary>
