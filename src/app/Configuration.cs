@@ -36,6 +36,11 @@ public static class Configuration
     public static int MaxCommandHistoryItems => GetInt(nameof(MaxCommandHistoryItems), 50, 0);
 
     /// <summary>
+    ///     Gets the maximum number of rows to search for differences before canceling.
+    /// </summary>
+    public static int CompareLimit => GetInt(nameof(CompareLimit), 10000, 1);
+
+    /// <summary>
     ///     Gets a value indicating whether searches should be case-insensitive.
     /// </summary>
     public static bool CaseInsensitiveSearch => GetBool(nameof(CaseInsensitiveSearch), true);
@@ -92,6 +97,8 @@ public static class Configuration
         new(nameof(RegexTimeoutMilliseconds), "Integer", "250", "Minimum: 1. Timeout for resolving regex patterns."),
         new(nameof(MaxCommandHistoryItems), "Integer", "50",
             "Minimum: 0. Maximum number of command history items to keep."),
+        new(nameof(CompareLimit), "Integer", "10000",
+            "Minimum: 1. Maximum rows to search for differences before canceling."),
         new(nameof(CaseInsensitiveSearch), "Boolean", "true", "Whether to perform case-insensitive search."),
         new(nameof(RegexSearch), "Boolean", "true", "Whether to seek regex out of command input."),
         new(nameof(ShowCommandExamples), "Boolean", "true", "Whether to show examples for command usage."),

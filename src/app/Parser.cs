@@ -511,6 +511,7 @@ public class Parser
             rightParser.BuildParserEnumerator(rightFilePath, cancellationToken);
 
         var currentRowNumber = Configuration.FirstRowIsHeader ? 1 : 0;
+        var rowsSinceLastMatch = 0;
         var leftHasMore = true;
         var rightHasMore = true;
 
@@ -540,10 +541,12 @@ public class Parser
 
             if (leftRow == null && rightRow != null)
             {
+                rowsSinceLastMatch = 0;
                 yield return new ComparisonResult(currentRowNumber, null, rightRow, ComparisonStatus.RightOnly);
             }
             else if (leftRow != null && rightRow == null)
             {
+                rowsSinceLastMatch = 0;
                 yield return new ComparisonResult(currentRowNumber, leftRow, null, ComparisonStatus.LeftOnly);
             }
             else if (leftRow != null && rightRow != null)
@@ -560,10 +563,19 @@ public class Parser
                 }
 
                 if (diffColumns.Count > 0)
+                {
+                    rowsSinceLastMatch = 0;
                     yield return new ComparisonResult(currentRowNumber, leftRow, rightRow, ComparisonStatus.Different,
                         diffColumns);
+                }
                 else
+                {
+                    rowsSinceLastMatch++;
+                    if (rowsSinceLastMatch >= Configuration.CompareLimit)
+                        yield break;
+
                     yield return new ComparisonResult(currentRowNumber, leftRow, rightRow, ComparisonStatus.Equal);
+                }
             }
         }
     }
