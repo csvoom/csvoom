@@ -116,6 +116,7 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Bottom"
                     FontSize="16"
+                    TextTrimming="LeadingCharacterEllipsis"
                     Text="Choose a CSV file to display its contents." />
             </StackPanel>
             <TextBlock

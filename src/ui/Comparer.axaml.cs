@@ -123,6 +123,8 @@ public partial class Comparer : Window
             await foreach (var result in Parser.CompareAsyncEnumerable(_leftFilePath, _rightFilePath,
                                _comparisonCts.Token))
             {
+                if (result.Status == ComparisonStatus.Equal) continue;
+
                 if (result.LeftRow != null) _leftVisibleRows.Add(result.LeftRow);
                 if (result.RightRow != null) _rightVisibleRows.Add(result.RightRow);
 
@@ -172,7 +174,7 @@ public partial class Comparer : Window
                 }
             }
 
-            StatusTextBlock.Text = $"Comparison complete. Found {_leftVisibleRows.Count} differences.";
+            StatusTextBlock.Text = $"Comparison complete. Found {_differences.Count} differences.";
         }
         catch (OperationCanceledException)
         {

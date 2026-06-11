@@ -31,7 +31,7 @@
             </ScrollViewer>
 
             <Grid Grid.Column="2" RowDefinitions="Auto,*">
-                <TextBlock Grid.Row="0" x:Name="LeftFileNameTextBlock" FontWeight="Bold" Margin="4" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Row="0" x:Name="LeftFileNameTextBlock" TextAlignment="End" FontWeight="Bold" Margin="4" TextTrimming="LeadingCharacterEllipsis" />
                 <DataGrid Grid.Row="1" x:Name="LeftDataGrid"
                           CanUserSortColumns="False"
                           AutoGenerateColumns="False"
@@ -42,7 +42,7 @@
             </Grid>
 
             <Grid Grid.Column="4" RowDefinitions="Auto,*">
-                <TextBlock Grid.Row="0" x:Name="RightFileNameTextBlock" FontWeight="Bold" Margin="4" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Row="0" x:Name="RightFileNameTextBlock" TextAlignment="Start" FontWeight="Bold" Margin="4" TextTrimming="LeadingCharacterEllipsis" />
                 <DataGrid Grid.Row="1" x:Name="RightDataGrid"
                           CanUserSortColumns="False"
                           AutoGenerateColumns="False"
@@ -55,7 +55,7 @@
 
         <!-- Status bar -->
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="8">
-            <TextBlock Grid.Column="0" x:Name="StatusTextBlock" Text="Import two CSV files to compare them." />
+            <TextBlock Grid.Column="0" x:Name="StatusTextBlock" TextTrimming="LeadingCharacterEllipsis" Text="Import two CSV files to compare them." />
             <ProgressBar Grid.Column="1" x:Name="ComparisonProgressBar" Width="200" IsVisible="False" />
         </Grid>
     </Grid>
