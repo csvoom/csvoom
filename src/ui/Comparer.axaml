@@ -3,23 +3,25 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:CSVoom"
+        xmlns:vm="clr-namespace:CSVoom.ui.ViewModels"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="CSVoom.Comparer"
+        x:DataType="vm:ComparerViewModel"
         Title="Comparer">
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Top bar -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="8">
-            <Button Content="Import Left" Click="ImportLeft_Click" x:Name="ImportLeftButton" />
-            <Button Content="Import Right" Click="ImportRight_Click" x:Name="ImportRightButton" />
-            <Button Content="Compare" Click="Compare_Click" x:Name="CompareButton" />
+            <Button Content="Import Left" Click="ImportLeft_Click" IsEnabled="{Binding CanImport}" />
+            <Button Content="Import Right" Click="ImportRight_Click" IsEnabled="{Binding CanImport}" />
+            <Button Content="{Binding CompareButtonText}" Command="{Binding CompareCommand}" />
         </StackPanel>
 
         <!-- Main content -->
         <Grid Grid.Row="1" ColumnDefinitions="300,4,*,4,*">
             <ScrollViewer Grid.Column="0">
-                <ItemsControl x:Name="DifferencesItemsControl">
+                <ItemsControl ItemsSource="{Binding Differences}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="local:DifferenceItem">
+                        <DataTemplate x:DataType="vm:DifferenceItem">
                             <Button Content="{Binding DisplayLabel}"
                                     Click="NavigateToDifference_Click"
                                     Tag="{Binding}"
@@ -31,8 +33,9 @@
             </ScrollViewer>
 
             <Grid Grid.Column="2" RowDefinitions="Auto,*">
-                <TextBlock Grid.Row="0" x:Name="LeftFileNameTextBlock" TextAlignment="End" FontWeight="Bold" Margin="4" TextTrimming="LeadingCharacterEllipsis" />
+                <TextBlock Grid.Row="0" Text="{Binding LeftFilePath}" ToolTip.Tip="{Binding LeftFilePath}" TextAlignment="End" FontWeight="Bold" Margin="4" TextTrimming="LeadingCharacterEllipsis" />
                 <DataGrid Grid.Row="1" x:Name="LeftDataGrid"
+                          ItemsSource="{Binding LeftVisibleRows}"
                           CanUserSortColumns="False"
                           AutoGenerateColumns="False"
                           IsReadOnly="True"
@@ -42,8 +45,9 @@
             </Grid>
 
             <Grid Grid.Column="4" RowDefinitions="Auto,*">
-                <TextBlock Grid.Row="0" x:Name="RightFileNameTextBlock" TextAlignment="Start" FontWeight="Bold" Margin="4" TextTrimming="LeadingCharacterEllipsis" />
+                <TextBlock Grid.Row="0" Text="{Binding RightFilePath}" ToolTip.Tip="{Binding RightFilePath}" TextAlignment="Start" FontWeight="Bold" Margin="4" TextTrimming="LeadingCharacterEllipsis" />
                 <DataGrid Grid.Row="1" x:Name="RightDataGrid"
+                          ItemsSource="{Binding RightVisibleRows}"
                           CanUserSortColumns="False"
                           AutoGenerateColumns="False"
                           IsReadOnly="True"
@@ -55,8 +59,8 @@
 
         <!-- Status bar -->
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="8">
-            <TextBlock Grid.Column="0" x:Name="StatusTextBlock" TextTrimming="LeadingCharacterEllipsis" Text="Import two CSV files to compare them." />
-            <ProgressBar Grid.Column="1" x:Name="ComparisonProgressBar" Width="200" IsVisible="False" />
+            <TextBlock Grid.Column="0" Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" TextTrimming="LeadingCharacterEllipsis" />
+            <ProgressBar Grid.Column="1" Value="0" IsIndeterminate="{Binding ComparisonProgressIndeterminate}" IsVisible="{Binding ComparisonProgressVisible}" Width="200" />
         </Grid>
     </Grid>
 </Window>

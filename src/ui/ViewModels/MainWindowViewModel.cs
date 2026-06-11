@@ -1,0 +1,506 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using CSVoom.app;
+
+namespace CSVoom.ui.ViewModels;
+
+public class MainWindowViewModel : ViewModelBase
+{
+    private string _commandText = "";
+    private string _statusText = "Choose a CSV file to display its contents.";
+    private string _totalRowsText = "";
+    private string _commandExampleText = "";
+    private string _versionText = "";
+    private bool _isBusy;
+    private bool _inlinePanelVisible;
+    private bool _settingsPanelVisible;
+    private bool _navigatePanelVisible;
+    private bool _commandHistoryPanelVisible;
+    private string? _selectedNavigateColumn;
+    private string? _selectedNavigateRow;
+    private string? _currentFilePath;
+
+    public ObservableCollection<string> CommandHistory { get; } = [];
+    public ObservableCollection<CsvRow> VisibleRows { get; } = [];
+    public ObservableCollection<string> NavigateColumnOptions { get; } = [];
+    public ObservableCollection<string> NavigateRowOptions { get; } = [];
+
+    public string CommandText
+    {
+        get => _commandText;
+        set
+        {
+            if (SetField(ref _commandText, value))
+            {
+                UpdateCommandExample(value);
+            }
+        }
+    }
+
+    public string StatusText
+    {
+        get => _statusText;
+        set => SetField(ref _statusText, value);
+    }
+
+    public string TotalRowsText
+    {
+        get => _totalRowsText;
+        set => SetField(ref _totalRowsText, value);
+    }
+
+    public string CommandExampleText
+    {
+        get => _commandExampleText;
+        set => SetField(ref _commandExampleText, value);
+    }
+
+    public string VersionText
+    {
+        get => _versionText;
+        set => SetField(ref _versionText, value);
+    }
+
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set
+        {
+            if (SetField(ref _isBusy, value))
+            {
+                OnPropertyChanged(nameof(CanRunCommand));
+                OnPropertyChanged(nameof(RunButtonText));
+            }
+        }
+    }
+
+    public bool CanRunCommand => true;
+
+    public string RunButtonText => IsBusy ? "Cancel" : "Run";
+
+    public bool InlinePanelVisible
+    {
+        get => _inlinePanelVisible;
+        set => SetField(ref _inlinePanelVisible, value);
+    }
+
+    public bool SettingsPanelVisible
+    {
+        get => _settingsPanelVisible;
+        set => SetField(ref _settingsPanelVisible, value);
+    }
+
+    public bool NavigatePanelVisible
+    {
+        get => _navigatePanelVisible;
+        set => SetField(ref _navigatePanelVisible, value);
+    }
+
+    public bool CommandHistoryPanelVisible
+    {
+        get => _commandHistoryPanelVisible;
+        set => SetField(ref _commandHistoryPanelVisible, value);
+    }
+
+    public string? SelectedNavigateColumn
+    {
+        get => _selectedNavigateColumn;
+        set => SetField(ref _selectedNavigateColumn, value);
+    }
+
+    public string? SelectedNavigateRow
+    {
+        get => _selectedNavigateRow;
+        set => SetField(ref _selectedNavigateRow, value);
+    }
+
+    public AsyncRelayCommand RunCommand { get; }
+    public AsyncRelayCommand OpenCommand { get; }
+    public AsyncRelayCommand ExportCommand { get; }
+    public RelayCommand SettingsCommand { get; }
+    public RelayCommand ComparerCommand { get; }
+    public RelayCommand NavigateCommand { get; }
+    public RelayCommand CommandHistoryCommand { get; }
+    public RelayCommand CloseInlinePanelCommand { get; }
+    public RelayCommand SaveSettingsCommand { get; }
+    public AsyncRelayCommand NavigateGoCommand { get; }
+
+    public static readonly IReadOnlyList<string> CommandSuggestions =
+    [
+        "load ",
+        "find ",
+        "hide ",
+        "unhide"
+    ];
+
+    private static readonly IReadOnlyDictionary<string, string> CommandExamples =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["load"] = "Arguments: [start(int)] [end(int)]",
+            ["find"] = "Arguments: word / word columnName",
+            ["hide"] = "Arguments: colum / column column",
+            ["unhide"] = "Arguments: column / column column"
+        };
+
+    public string[]? AutoCompleteOptions => Configuration.MaxCommandHistoryItems > 0
+        ? CommandSuggestions.Take(Configuration.MaxCommandHistoryItems).ToArray()
+        : null;
+
+    public bool ShowCommandExamples => Configuration.ShowCommandExamples;
+
+    public event Func<Task<string?>>? RequestOpenFile;
+    public event Action? RequestShowSettings;
+    public event Func<Task<string?>>? RequestSaveFile;
+    public event Func<Task>? RequestSaveSettings;
+    public event Action? RequestShowComparer;
+    public event Action<CsvRow?, string, string?>? RequestScrollToMatch;
+    public event Action<Parser>? RequestColumnInitialization;
+    public event Action<string[], bool>? RequestSetVisibility;
+    public event Func<string, List<string>>? RequestResolveHeaders;
+
+    public Parser CurrentParser { get; } = new();
+    private CancellationTokenSource? _currentOperationCts;
+
+    public MainWindowViewModel()
+    {
+        RunCommand = new AsyncRelayCommand(_ => ExecuteCommandAsync(CommandText), allowConcurrent: true);
+        OpenCommand = new AsyncRelayCommand(_ => OpenFileAsync());
+        ExportCommand = new AsyncRelayCommand(_ => ExportFileAsync());
+        SettingsCommand = new RelayCommand(_ => ShowSettings());
+        ComparerCommand = new RelayCommand(_ => RequestShowComparer?.Invoke());
+        NavigateCommand = new RelayCommand(_ => ShowNavigate());
+        CommandHistoryCommand = new RelayCommand(_ => ShowCommandHistory());
+        CloseInlinePanelCommand = new RelayCommand(_ => CloseInlinePanel());
+        SaveSettingsCommand = new RelayCommand(_ => RequestSaveSettings?.Invoke());
+        NavigateGoCommand = new AsyncRelayCommand(_ => NavigateGoAsync());
+        
+        VersionText = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
+    }
+
+    public void CloseInlinePanel()
+    {
+        InlinePanelVisible = false;
+        SettingsPanelVisible = false;
+        NavigatePanelVisible = false;
+        CommandHistoryPanelVisible = false;
+    }
+
+    private void ShowSettings()
+    {
+        if (SettingsPanelVisible)
+        {
+            CloseInlinePanel();
+        }
+        else
+        {
+            CloseInlinePanel();
+            SettingsPanelVisible = true;
+            InlinePanelVisible = true;
+            RequestShowSettings?.Invoke();
+        }
+    }
+
+    public void UpdateCommandExample(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            CommandExampleText = "";
+            return;
+        }
+        var firstWord = text.Split(' ')[0].ToLower();
+        if (CommandExamples.TryGetValue(firstWord, out var example))
+        {
+            CommandExampleText = example;
+        }
+        else
+        {
+            CommandExampleText = "";
+        }
+    }
+
+    private void ShowNavigate()
+    {
+        if (NavigatePanelVisible)
+        {
+            CloseInlinePanel();
+        }
+        else
+        {
+            CloseInlinePanel();
+            UpdateNavigationRange();
+            NavigatePanelVisible = true;
+            InlinePanelVisible = true;
+        }
+    }
+
+    private void ShowCommandHistory()
+    {
+        if (CommandHistoryPanelVisible)
+        {
+            CloseInlinePanel();
+        }
+        else
+        {
+            CloseInlinePanel();
+            CommandHistoryPanelVisible = true;
+            InlinePanelVisible = true;
+        }
+    }
+
+    private async void UpdateNavigationRange()
+    {
+        NavigateColumnOptions.Clear();
+        foreach (var header in CurrentParser.Headers) NavigateColumnOptions.Add(header);
+        for (var i = 0; i < CurrentParser.Headers.Count; i++) NavigateColumnOptions.Add(Parser.GetColumnLetter(i));
+
+        NavigateRowOptions.Clear();
+        var totalRows = await CurrentParser.GetRowCountAsync(_currentFilePath ?? "");
+        if (totalRows > 0)
+        {
+            var start = Configuration.FirstRowIsHeader ? 2 : 1;
+            var end = totalRows + (Configuration.FirstRowIsHeader ? 1 : 0);
+            for (var i = start; i <= end; i++)
+                NavigateRowOptions.Add(i.ToString());
+        }
+    }
+
+    private async Task OpenFileAsync()
+    {
+        if (RequestOpenFile != null)
+        {
+            var filePath = await RequestOpenFile();
+            if (filePath != null)
+            {
+                _currentOperationCts = new CancellationTokenSource();
+                var ct = _currentOperationCts.Token;
+                IsBusy = true;
+                try
+                {
+                    StatusText = $"Loading {filePath}...";
+                    _currentFilePath = filePath;
+                    await CurrentParser.ReadHeadersAsync(filePath, ct);
+                    RequestColumnInitialization?.Invoke(CurrentParser);
+                    await LoadRangeIntoViewAsync(1, Configuration.AutoLoadRows, ct);
+                    StatusText = $"Loaded {filePath}.";
+                }
+                catch (OperationCanceledException)
+                {
+                    StatusText = "Operation canceled.";
+                }
+                catch (Exception ex)
+                {
+                    StatusText = $"Error: {ex.Message}";
+                }
+                finally
+                {
+                    IsBusy = false;
+                    await UpdateTotalRowCountAsync();
+                }
+            }
+        }
+    }
+
+    private async Task ExportFileAsync()
+    {
+        if (RequestSaveFile != null)
+        {
+            var filePath = await RequestSaveFile();
+            if (filePath != null)
+            {
+                await ExecuteCommandAsync($"export \"{filePath}\"");
+            }
+        }
+    }
+
+    private async Task NavigateGoAsync()
+    {
+        if (string.IsNullOrEmpty(SelectedNavigateRow)) return;
+        if (!int.TryParse(SelectedNavigateRow, out var row)) return;
+
+        var startRow = ((row - 1) / Configuration.AutoLoadRows) * Configuration.AutoLoadRows + 1;
+        var endRow = startRow + Configuration.AutoLoadRows - 1;
+
+        await LoadRangeIntoViewAsync(startRow, endRow);
+        RequestScrollToMatch?.Invoke(VisibleRows.FirstOrDefault(r => r.RowNumber == row), SelectedNavigateColumn ?? "", null);
+        CloseInlinePanel();
+    }
+
+    public async Task ExecuteCommandAsync(string commandText)
+    {
+        if (string.IsNullOrWhiteSpace(commandText)) return;
+
+        if (IsBusy)
+        {
+            _currentOperationCts?.Cancel();
+            return;
+        }
+
+        _currentOperationCts = new CancellationTokenSource();
+        var ct = _currentOperationCts.Token;
+
+        IsBusy = true;
+        try
+        {
+            LogCommand(commandText);
+            var parts = Commands.SplitCommand(commandText);
+            if (parts.Length == 0) return;
+            var command = parts[0];
+            var arguments = parts.Skip(1).ToArray();
+
+            switch (command.ToLower())
+            {
+                case "load":
+                    await Command_LoadAsync(arguments, ct);
+                    break;
+                case "find":
+                    await Command_FindAsync(arguments, ct);
+                    break;
+                case "hide":
+                    RequestSetVisibility?.Invoke(arguments, false);
+                    break;
+                case "show":
+                case "unhide":
+                    RequestSetVisibility?.Invoke(arguments, true);
+                    break;
+                case "export":
+                    await Command_ExportAsync(arguments, ct);
+                    break;
+                default:
+                    StatusText = $"Unknown command: {command}";
+                    break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Operation canceled.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            await UpdateTotalRowCountAsync();
+        }
+    }
+
+    private void LogCommand(string command)
+    {
+        if (CommandHistory.Contains(command)) CommandHistory.Remove(command);
+        CommandHistory.Insert(0, command);
+        if (CommandHistory.Count > 100) CommandHistory.RemoveAt(CommandHistory.Count - 1);
+    }
+
+    private async Task Command_LoadAsync(string[] arguments, CancellationToken ct)
+    {
+        if (_currentFilePath == null) throw new Exception("No file imported. Use 'Import file' button first.");
+
+        int startRow = 1;
+        int endRow = Configuration.AutoLoadRows;
+
+        if (arguments.Length >= 1 && int.TryParse(arguments[0], out var start))
+        {
+            startRow = start;
+            endRow = start + Configuration.AutoLoadRows - 1;
+        }
+
+        if (arguments.Length >= 2 && int.TryParse(arguments[1], out var end))
+        {
+            endRow = end;
+        }
+
+        StatusText = $"Loading Rows {startRow}-{endRow}...";
+        
+        await LoadRangeIntoViewAsync(startRow, endRow, ct);
+        StatusText = $"Loaded Rows {startRow}-{endRow}.";
+    }
+
+    private async Task Command_FindAsync(string[] arguments, CancellationToken ct)
+    {
+        if (arguments.Length == 0) throw new Exception("Usage: find <search_text> [column]");
+        if (_currentFilePath == null) return;
+
+        var searchText = arguments[0];
+        var columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
+
+        var searchDescription = Parser.IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
+        
+        StatusText = $"Searching for {searchDescription}...";
+
+        var progress = new Progress<int>(count =>
+        {
+            StatusText = $"Searching... Found {count:N0} matches so far.";
+        });
+
+        VisibleRows.Clear();
+        var foundCount = 0;
+
+        List<string>? searchHeaders = null;
+        if (columnSearchValue != null)
+        {
+            searchHeaders = RequestResolveHeaders?.Invoke(columnSearchValue);
+        }
+
+        await foreach (var match in CurrentParser.ReadMatchesAsyncEnumerable(
+                           _currentFilePath,
+                           Parser.CreateSearchMatcher(searchText),
+                           searchHeaders,
+                           Configuration.AutoFindRows,
+                           progress,
+                           ct))
+        {
+            if (!VisibleRows.Contains(match.Row))
+            {
+                VisibleRows.Add(match.Row);
+            }
+            foundCount++;
+        }
+
+        StatusText = $"Found {foundCount:N0} instance(s) of {searchDescription}.";
+    }
+
+    private async Task Command_ExportAsync(string[] arguments, CancellationToken ct)
+    {
+        if (arguments.Length == 0) throw new Exception("Usage: export <file_path>");
+        if (_currentFilePath == null) return;
+        var filePath = arguments[0];
+        StatusText = $"Exporting to {filePath}...";
+        // Note: ExportToCsvAsync needs visible headers and rows. 
+        // This is a simplification, might need more logic if we want to export only visible rows.
+        await CurrentParser.ExportToCsvAsync(filePath, VisibleRows, CurrentParser.Headers, ct);
+        StatusText = $"Exported to {filePath}.";
+    }
+
+    private async Task LoadRangeIntoViewAsync(int startRow, int endRow, CancellationToken ct = default)
+    {
+        if (_currentFilePath == null) return;
+        VisibleRows.Clear();
+        var rows = await CurrentParser.ReadRangeAsync(_currentFilePath, startRow, endRow, ct);
+        foreach (var row in rows) VisibleRows.Add(row);
+    }
+
+    private async Task UpdateTotalRowCountAsync()
+    {
+        if (_currentFilePath == null) return;
+        var count = await CurrentParser.GetRowCountAsync(_currentFilePath);
+        TotalRowsText = $"Total rows: {count}";
+    }
+}
+
+public class FindResult
+{
+    public CsvRow Row { get; set; } = null!;
+    public string Header { get; set; } = "";
+    public string Value { get; set; } = "";
+    public string RowNumber { get; set; } = "";
+
+    public override string ToString()
+    {
+        return $"{Header}: {Value}";
+    }
+}

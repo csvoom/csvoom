@@ -2,19 +2,21 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:CSVoom.ui.ViewModels"
         mc:Ignorable="d"
         x:Class="CSVoom.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
         Name="MainWindowElement"
         Title="CSVoom">
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0">
         <!-- Top bar -->
         <Menu Grid.Row="0">
-            <MenuItem Header="Import file" Name="OpenButton" Click="OpenButton_Click" />
-            <MenuItem Header="Export file" Name="ExportButton" Click="ExportButton_Click" />
-            <MenuItem Header="Navigate" Name="NavigateButton" Click="NavigateButton_Click" />
-            <MenuItem Header="Command History" Name="CommandHistoryButton" Click="CommandHistoryButton_Click" />
-            <MenuItem Header="Settings" Click="SettingsButton_Click" />
-            <MenuItem Header="Comparer" Click="ComparerButton_Click" />
+            <MenuItem Header="Import file" Command="{Binding OpenCommand}" />
+            <MenuItem Header="Export file" Command="{Binding ExportCommand}" />
+            <MenuItem Header="Navigate" Command="{Binding NavigateCommand}" />
+            <MenuItem Header="Command History" Command="{Binding CommandHistoryCommand}" />
+            <MenuItem Header="Settings" Command="{Binding SettingsCommand}" />
+            <MenuItem Header="Comparer" Command="{Binding ComparerCommand}" />
         </Menu>
         <StackPanel
             Grid.Row="0"
@@ -22,71 +24,69 @@
             HorizontalAlignment="Right"
             Spacing="8">
             <TextBlock
-                x:Name="CommandExampleTextBlock"
+                Text="{Binding CommandExampleText}"
                 HorizontalAlignment="Left"
                 Opacity="0.7"
-                FontSize="13"
-                Text="" />
-            <AutoCompleteBox
+                FontSize="13" />
+            <TextBox
                 x:Name="CommandTextBox"
-                PlaceholderText="Command. eg: load, find, hide..."
-                FilterMode="Contains"
+                Text="{Binding CommandText, Mode=TwoWay}"
+                Watermark="Command. eg: load, find, hide..."
                 KeyDown="CommandTextBox_KeyDown"
-                TextChanged="CommandTextBox_TextChanged"
                 HorizontalAlignment="Stretch"
-                MinWidth="320"
-                MinimumPrefixLength="0" />
-            <Button Content="Run" Click="RunCommandButton_Click" Name="RunButton" />
+                MinWidth="320" />
+            <Button Content="{Binding RunButtonText}" Command="{Binding RunCommand}" />
         </StackPanel>
 
         <!-- Inline Panels -->
         <Border Grid.Row="1"
-                x:Name="InlinePanelContainer"
-                IsVisible="False"
+                IsVisible="{Binding InlinePanelVisible}"
                 BorderBrush="{DynamicResource AppBorder}"
                 BorderThickness="0,0,0,1"
                 Background="{DynamicResource AppSecondaryBackground}">
             <Grid Margin="8">
                 <!-- Settings Panel -->
-                <StackPanel x:Name="SettingsPanel" IsVisible="False" Spacing="8">
+                <StackPanel IsVisible="{Binding SettingsPanelVisible}" Spacing="8">
                     <DockPanel>
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                             <TextBlock Text="Settings" FontWeight="Bold" FontSize="18" />
-                            <TextBlock x:Name="VersionTextBlock" FontSize="12" Foreground="Gray" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            <TextBlock Text="{Binding VersionText}" FontSize="12" Foreground="Gray" VerticalAlignment="Bottom" Margin="0,0,0,2" />
                         </StackPanel>
-                        <Button Content="Close" Click="CloseInlinePanel_Click" HorizontalAlignment="Right" />
+                        <Button Content="Close" Command="{Binding CloseInlinePanelCommand}" HorizontalAlignment="Right" />
                     </DockPanel>
                     <ScrollViewer MaxHeight="400">
                         <StackPanel x:Name="SettingsFieldsContainer" Spacing="8" />
                     </ScrollViewer>
-                    <Button Content="Save &amp; Apply" Click="SaveSettings_Click" HorizontalAlignment="Right"
+                    <Button Content="Save &amp; Apply" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Right"
                             Margin="0,8,0,0" />
                 </StackPanel>
 
                 <!-- Navigate Panel -->
-                <StackPanel x:Name="NavigatePanel" IsVisible="False" Spacing="8">
+                <StackPanel IsVisible="{Binding NavigatePanelVisible}" Spacing="8">
                     <DockPanel>
                         <TextBlock Text="Navigate" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
-                        <Button Content="Close" Click="CloseInlinePanel_Click" HorizontalAlignment="Right" />
+                        <Button Content="Close" Command="{Binding CloseInlinePanelCommand}" HorizontalAlignment="Right" />
                     </DockPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="Column:" VerticalAlignment="Center" />
-                        <AutoCompleteBox x:Name="NavigateColumnBox" Width="200" MinimumPrefixLength="0"
+                        <AutoCompleteBox ItemsSource="{Binding NavigateColumnOptions}" 
+                                         Text="{Binding SelectedNavigateColumn, Mode=TwoWay}" 
+                                         Width="200" MinimumPrefixLength="0"
                                          FilterMode="Contains" />
                         <TextBlock Text="Row:" VerticalAlignment="Center" />
-                        <AutoCompleteBox x:Name="NavigateRowNumeric" Width="100" MinimumPrefixLength="0"
-                                         FilterMode="Contains" />
-                        <Button Content="Go" Click="NavigateGo_Click" />
+                        <TextBox Text="{Binding SelectedNavigateRow, Mode=TwoWay}" 
+                                 Width="100" Watermark="Row number" />
+                        <Button Content="Go" Command="{Binding NavigateGoCommand}" />
                     </StackPanel>
                 </StackPanel>
 
                 <!-- Command History Panel -->
-                <StackPanel x:Name="CommandHistoryPanel" IsVisible="False" Spacing="8">
+                <StackPanel IsVisible="{Binding CommandHistoryPanelVisible}" Spacing="8">
                     <DockPanel>
                         <TextBlock Text="Command History" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
-                        <Button Content="Close" Click="CloseInlinePanel_Click" HorizontalAlignment="Right" />
+                        <Button Content="Close" Command="{Binding CloseInlinePanelCommand}" HorizontalAlignment="Right" />
                     </DockPanel>
-                    <ListBox x:Name="CommandHistoryListBox" MaxHeight="300"
+                    <ListBox ItemsSource="{Binding CommandHistory}" MaxHeight="300"
                              SelectionChanged="CommandHistoryListBox_SelectionChanged">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -100,6 +100,7 @@
         <DataGrid
             Grid.Row="3"
             x:Name="CsvDataGrid"
+            ItemsSource="{Binding VisibleRows}"
             CanUserSortColumns="False"
             AutoGenerateColumns="False"
             IsReadOnly="True"
@@ -112,21 +113,20 @@
                 Orientation="Horizontal">
                 <TextBlock
                     Margin="8,8,8,8"
-                    x:Name="StatusTextBlock"
+                    Text="{Binding StatusText}"
+                    ToolTip.Tip="{Binding StatusText}"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Bottom"
                     FontSize="16"
-                    TextTrimming="LeadingCharacterEllipsis"
-                    Text="Choose a CSV file to display its contents." />
+                    TextTrimming="LeadingCharacterEllipsis" />
             </StackPanel>
             <TextBlock
                 Grid.Column="1"
                 Margin="8,8,8,8"
-                x:Name="TotalRowsTextBlock"
+                Text="{Binding TotalRowsText}"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Bottom"
-                FontSize="16"
-                Text="" />
+                FontSize="16" />
         </Grid>
     </Grid>
 </Window>

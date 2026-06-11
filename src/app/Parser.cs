@@ -520,8 +520,10 @@ public class Parser
             rightHasMore = await rightEnumerator.MoveNextAsync();
         }
 
-        while (leftHasMore && rightHasMore && !cancellationToken.IsCancellationRequested)
+        while (leftHasMore && rightHasMore)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             leftHasMore = await leftEnumerator.MoveNextAsync();
             rightHasMore = await rightEnumerator.MoveNextAsync();
 
