@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CSVoom.app;
@@ -76,7 +78,7 @@ public class ComparerViewModel : ViewModelBase
     }
 
     public event Func<string, Parser, ObservableCollection<CsvRow>, Task>? RequestFileLoad;
-    public event Action<DifferenceItem>? RequestNavigation;
+    public event Action<DifferenceDetail, int>? RequestNavigation;
 
     public AsyncRelayCommand CompareCommand { get; }
 
@@ -135,6 +137,8 @@ public class ComparerViewModel : ViewModelBase
             ComparisonProgressVisible = true;
             ComparisonProgressIndeterminate = true;
 
+            int totalDifferences = 0;
+
             await foreach (var result in Parser.CompareAsyncEnumerable(LeftFilePath, RightFilePath,
                                _comparisonCts.Token))
             {
@@ -143,6 +147,8 @@ public class ComparerViewModel : ViewModelBase
                 if (result.LeftRow != null) LeftVisibleRows.Add(result.LeftRow);
                 if (result.RightRow != null) RightVisibleRows.Add(result.RightRow);
 
+                var details = new List<DifferenceDetail>();
+
                 switch (result.Status)
                 {
                     case ComparisonStatus.AnomalousColumn when result.DifferentColumns != null:
@@ -150,7 +156,7 @@ public class ComparerViewModel : ViewModelBase
                         foreach (var colIndex in result.DifferentColumns)
                         {
                             var colHeader = colIndex < LeftParser.Headers.Count ? LeftParser.Headers[colIndex] : (colIndex + 1).ToString();
-                            Differences.Add(new DifferenceItem(1, $"[ANOMALOUS] {colHeader}", colIndex, "Column not found"));
+                            details.Add(new DifferenceDetail($"[ANOMALOUS] {colHeader}", colIndex, "Column not found"));
                         }
                         break;
                     }
@@ -160,8 +166,7 @@ public class ComparerViewModel : ViewModelBase
                         {
                             var colHeader = colIndex < LeftParser.Headers.Count ? LeftParser.Headers[colIndex] : (colIndex + 1).ToString();
 
-                            Differences.Add(new DifferenceItem(
-                                result.RowNumber,
+                            details.Add(new DifferenceDetail(
                                 colHeader,
                                 colIndex,
                                 "Value mismatch"
@@ -171,10 +176,10 @@ public class ComparerViewModel : ViewModelBase
                         break;
                     }
                     case ComparisonStatus.LeftOnly:
-                        Differences.Add(new DifferenceItem(result.RowNumber, "Row", -1, "Row only in left file"));
+                        details.Add(new DifferenceDetail("Row", -1, "Row only in left file"));
                         break;
                     case ComparisonStatus.RightOnly:
-                        Differences.Add(new DifferenceItem(result.RowNumber, "Row", -1, "Row only in right file"));
+                        details.Add(new DifferenceDetail("Row", -1, "Row only in right file"));
                         break;
                     case ComparisonStatus.Equal:
                         break;
@@ -182,19 +187,25 @@ public class ComparerViewModel : ViewModelBase
                         throw new ArgumentOutOfRangeException();
                 }
 
+                if (details.Count > 0)
+                {
+                    Differences.Add(new DifferenceItem(result.RowNumber, details));
+                    totalDifferences += details.Count;
+                }
+
                 if (Differences.Count % 100 == 0)
                 {
                     await Task.Yield();
                 }
 
-                if (Differences.Count >= Configuration.CompareLimit)
+                if (totalDifferences >= Configuration.CompareLimit)
                 {
-                    StatusText = $"Comparison stopped. Found maximum {Differences.Count} differences.";
+                    StatusText = $"Comparison stopped. Found maximum {totalDifferences} differences.";
                     return;
                 }
             }
 
-            StatusText = $"Comparison complete. Found {Differences.Count} differences.";
+            StatusText = $"Comparison complete. Found {totalDifferences} differences in {Differences.Count} rows.";
         }
         catch (OperationCanceledException)
         {
@@ -212,8 +223,8 @@ public class ComparerViewModel : ViewModelBase
         }
     }
 
-    public void NavigateToDifference(DifferenceItem item)
+    public void NavigateToDifference(DifferenceDetail detail, int row)
     {
-        RequestNavigation?.Invoke(item);
+        RequestNavigation?.Invoke(detail, row);
     }
 }

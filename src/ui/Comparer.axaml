@@ -22,10 +22,26 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:DifferenceItem">
                             <Button Content="{Binding DisplayLabel}"
-                                    Click="NavigateToDifference_Click"
-                                    Tag="{Binding}"
                                     HorizontalAlignment="Stretch"
-                                    Margin="2" />
+                                    Margin="2">
+                                <Button.Flyout>
+                                    <Flyout>
+                                        <ScrollViewer MaxHeight="300">
+                                            <ItemsControl ItemsSource="{Binding Details}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:DifferenceDetail">
+                                                        <Button Content="{Binding DisplayLabel}"
+                                                                Click="NavigateToDifference_Click"
+                                                                Tag="{Binding}"
+                                                                HorizontalAlignment="Stretch"
+                                                                Margin="2" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

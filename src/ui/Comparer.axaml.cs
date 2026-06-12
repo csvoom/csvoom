@@ -27,7 +27,7 @@ public partial class Comparer : Window
             await LoadFileAsync(path, parser, dataGrid, rows);
         };
 
-        _viewModel.RequestNavigation += NavigateToDifference;
+        _viewModel.RequestNavigation += (detail, row) => NavigateToDifference(detail, row);
     }
 
     private async void ImportLeft_Click(object? sender, RoutedEventArgs e)
@@ -90,19 +90,19 @@ public partial class Comparer : Window
 
     private void NavigateToDifference_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: DifferenceItem item })
+        if (sender is Button { Tag: DifferenceDetail detail, DataContext: DifferenceItem item })
         {
-            _viewModel.NavigateToDifference(item);
+            _viewModel.NavigateToDifference(detail, item.Row);
         }
     }
 
-    private void NavigateToDifference(DifferenceItem item)
+    private void NavigateToDifference(DifferenceDetail detail, int rowNumber)
     {
         // Rows are 1-indexed in the file.
         // DataGrid items are 0-indexed. Index 0 corresponds to the first row of data.
         // If the first row is a header (RowNumber 1), then RowNumber 2 is index 0.
         // If the first row is NOT a header (RowNumber 1), then RowNumber 1 is index 0.
-        var rowIndex = Configuration.FirstRowIsHeader ? item.Row - 2 : item.Row - 1;
+        var rowIndex = Configuration.FirstRowIsHeader ? rowNumber - 2 : rowNumber - 1;
 
         if (rowIndex < 0) return;
 
@@ -120,8 +120,8 @@ public partial class Comparer : Window
             RightDataGrid.ScrollIntoView(rightItems[rowIndex], null);
         }
 
-        if (item.ColumnIndex < 0) return;
-        var gridColumnIndex = item.ColumnIndex + DataGridUtils.RowNumberColumnOffset;
+        if (detail.ColumnIndex < 0) return;
+        var gridColumnIndex = detail.ColumnIndex + DataGridUtils.RowNumberColumnOffset;
         if (gridColumnIndex < LeftDataGrid.Columns.Count)
             LeftDataGrid.ScrollIntoView(null, LeftDataGrid.Columns[gridColumnIndex]);
         if (gridColumnIndex < RightDataGrid.Columns.Count)

@@ -1,10 +1,16 @@
-﻿using CSVoom.app;
+﻿using System.Collections.Generic;
+using CSVoom.app;
 
 namespace CSVoom.ui.ViewModels;
 
-public record DifferenceItem(int Row, string Column, int ColumnIndex, string Description)
+public record DifferenceDetail(string Column, int ColumnIndex, string Description)
 {
     public string DisplayLabel => ColumnIndex >= 0
-        ? $"Row: {Row} - Col: {Parser.GetColumnLetter(ColumnIndex)} ({Description})"
-        : $"Row: {Row} - {Description}";
+        ? $"Col: {Parser.GetColumnLetter(ColumnIndex)} ({Description})"
+        : Description;
+}
+
+public record DifferenceItem(int Row, List<DifferenceDetail> Details)
+{
+    public string DisplayLabel => $"Row: {Row} ({Details.Count} differences)";
 }
