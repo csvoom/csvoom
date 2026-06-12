@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
@@ -17,11 +18,11 @@ public class RelayCommand(Action<object?> execute, Predicate<object?>? canExecut
 
 public class AsyncRelayCommand(Func<object?, Task> execute, Predicate<object?>? canExecute = null, bool allowConcurrent = false) : ICommand
 {
-    private bool _isExecuting;
+    private int _executionCount;
 
     public bool CanExecute(object? parameter)
     {
-        return (allowConcurrent || !_isExecuting) && (canExecute == null || canExecute(parameter));
+        return (allowConcurrent || _executionCount == 0) && (canExecute == null || canExecute(parameter));
     }
 
     public async void Execute(object? parameter)
@@ -30,13 +31,13 @@ public class AsyncRelayCommand(Func<object?, Task> execute, Predicate<object?>? 
 
         try
         {
-            _isExecuting = true;
+            Interlocked.Increment(ref _executionCount);
             RaiseCanExecuteChanged();
             await execute(parameter);
         }
         finally
         {
-            _isExecuting = false;
+            Interlocked.Decrement(ref _executionCount);
             RaiseCanExecuteChanged();
         }
     }

@@ -27,7 +27,6 @@ public class MainWindowViewModel : ViewModelBase
     public ObservableCollection<string> CommandHistory { get; } = [];
     public ObservableCollection<CsvRow> VisibleRows { get; } = [];
     public ObservableCollection<string> NavigateColumnOptions { get; } = [];
-    public ObservableCollection<string> NavigateRowOptions { get; } = [];
 
     public string CommandText
     {
@@ -65,7 +64,7 @@ public class MainWindowViewModel : ViewModelBase
         set => SetField(ref _versionText, value);
     }
 
-    public bool IsBusy
+    private bool IsBusy
     {
         get => _isBusy;
         set
@@ -129,7 +128,7 @@ public class MainWindowViewModel : ViewModelBase
     public RelayCommand SaveSettingsCommand { get; }
     public AsyncRelayCommand NavigateGoCommand { get; }
 
-    public static readonly IReadOnlyList<string> CommandSuggestions =
+    private static readonly IReadOnlyList<string> CommandSuggestions =
     [
         "load ",
         "find ",
@@ -159,7 +158,7 @@ public class MainWindowViewModel : ViewModelBase
     public event Action? RequestShowComparer;
     public event Action<CsvRow?, string, string?>? RequestScrollToMatch;
     public event Action<Parser>? RequestColumnInitialization;
-    public event Action<string[], bool>? RequestSetVisibility;
+    public event Action<string[], bool, CancellationToken>? RequestSetVisibility;
     public event Func<string, List<string>>? RequestResolveHeaders;
 
     public Parser CurrentParser { get; } = new();
@@ -212,14 +211,7 @@ public class MainWindowViewModel : ViewModelBase
             return;
         }
         var firstWord = text.Split(' ')[0].ToLower();
-        if (CommandExamples.TryGetValue(firstWord, out var example))
-        {
-            CommandExampleText = example;
-        }
-        else
-        {
-            CommandExampleText = "";
-        }
+        CommandExampleText = CommandExamples.GetValueOrDefault(firstWord, "");
     }
 
     private void ShowNavigate()
@@ -231,7 +223,6 @@ public class MainWindowViewModel : ViewModelBase
         else
         {
             CloseInlinePanel();
-            UpdateNavigationRange();
             NavigatePanelVisible = true;
             InlinePanelVisible = true;
         }
@@ -248,23 +239,6 @@ public class MainWindowViewModel : ViewModelBase
             CloseInlinePanel();
             CommandHistoryPanelVisible = true;
             InlinePanelVisible = true;
-        }
-    }
-
-    private async void UpdateNavigationRange()
-    {
-        NavigateColumnOptions.Clear();
-        foreach (var header in CurrentParser.Headers) NavigateColumnOptions.Add(header);
-        for (var i = 0; i < CurrentParser.Headers.Count; i++) NavigateColumnOptions.Add(Parser.GetColumnLetter(i));
-
-        NavigateRowOptions.Clear();
-        var totalRows = await CurrentParser.GetRowCountAsync(_currentFilePath ?? "");
-        if (totalRows > 0)
-        {
-            var start = Configuration.FirstRowIsHeader ? 2 : 1;
-            var end = totalRows + (Configuration.FirstRowIsHeader ? 1 : 0);
-            for (var i = start; i <= end; i++)
-                NavigateRowOptions.Add(i.ToString());
         }
     }
 
@@ -329,13 +303,18 @@ public class MainWindowViewModel : ViewModelBase
         CloseInlinePanel();
     }
 
-    public async Task ExecuteCommandAsync(string commandText)
+    private bool _isCanceling;
+
+    private async Task ExecuteCommandAsync(string commandText)
     {
         if (string.IsNullOrWhiteSpace(commandText)) return;
 
         if (IsBusy)
         {
+            if (_isCanceling) return;
+            _isCanceling = true;
             _currentOperationCts?.Cancel();
+            StatusText = "Canceling...";
             return;
         }
 
@@ -343,6 +322,7 @@ public class MainWindowViewModel : ViewModelBase
         var ct = _currentOperationCts.Token;
 
         IsBusy = true;
+        _isCanceling = false;
         try
         {
             LogCommand(commandText);
@@ -360,11 +340,11 @@ public class MainWindowViewModel : ViewModelBase
                     await Command_FindAsync(arguments, ct);
                     break;
                 case "hide":
-                    RequestSetVisibility?.Invoke(arguments, false);
+                    RequestSetVisibility?.Invoke(arguments, false, ct);
                     break;
                 case "show":
                 case "unhide":
-                    RequestSetVisibility?.Invoke(arguments, true);
+                    RequestSetVisibility?.Invoke(arguments, true, ct);
                     break;
                 case "export":
                     await Command_ExportAsync(arguments, ct);
@@ -385,6 +365,7 @@ public class MainWindowViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            _isCanceling = false;
             await UpdateTotalRowCountAsync();
         }
     }
@@ -446,6 +427,7 @@ public class MainWindowViewModel : ViewModelBase
             searchHeaders = RequestResolveHeaders?.Invoke(columnSearchValue);
         }
 
+        var matches = new List<CsvRow>();
         await foreach (var match in CurrentParser.ReadMatchesAsyncEnumerable(
                            _currentFilePath,
                            Parser.CreateSearchMatcher(searchText),
@@ -454,11 +436,22 @@ public class MainWindowViewModel : ViewModelBase
                            progress,
                            ct))
         {
-            if (!VisibleRows.Contains(match.Row))
+            if (!matches.Contains(match.Row))
             {
-                VisibleRows.Add(match.Row);
+                matches.Add(match.Row);
             }
             foundCount++;
+
+            if (matches.Count % 100 == 0)
+            {
+                await Task.Yield();
+            }
+        }
+
+        VisibleRows.Clear();
+        foreach (var row in matches)
+        {
+            VisibleRows.Add(row);
         }
 
         StatusText = $"Found {foundCount:N0} instance(s) of {searchDescription}.";
@@ -480,27 +473,26 @@ public class MainWindowViewModel : ViewModelBase
     {
         if (_currentFilePath == null) return;
         VisibleRows.Clear();
-        var rows = await CurrentParser.ReadRangeAsync(_currentFilePath, startRow, endRow, ct);
-        foreach (var row in rows) VisibleRows.Add(row);
+        var count = 0;
+        await foreach (var row in CurrentParser.ReadRangeAsyncEnumerable(_currentFilePath, startRow, endRow, ct))
+        {
+            VisibleRows.Add(row);
+            count++;
+            if (count % 100 == 0)
+            {
+                await Task.Yield();
+            }
+        }
     }
 
     private async Task UpdateTotalRowCountAsync()
     {
         if (_currentFilePath == null) return;
         var count = await CurrentParser.GetRowCountAsync(_currentFilePath);
-        TotalRowsText = $"Total rows: {count}";
-    }
-}
-
-public class FindResult
-{
-    public CsvRow Row { get; set; } = null!;
-    public string Header { get; set; } = "";
-    public string Value { get; set; } = "";
-    public string RowNumber { get; set; } = "";
-
-    public override string ToString()
-    {
-        return $"{Header}: {Value}";
+        var colCount = CurrentParser.Headers.Count;
+        var colRange = colCount > 0 
+            ? $" ({Parser.GetColumnLetter(0)}-{Parser.GetColumnLetter(colCount - 1)})" 
+            : "";
+        TotalRowsText = $"{count} rows | {colCount} columns {colRange}";
     }
 }

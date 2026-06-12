@@ -103,6 +103,8 @@ public class ComparerViewModel : ViewModelBase
         }
     }
 
+    private bool _isCanceling;
+
     private async Task CompareAsync()
     {
         if (LeftFilePath == null || RightFilePath == null)
@@ -113,14 +115,15 @@ public class ComparerViewModel : ViewModelBase
 
         if (IsBusy)
         {
-            if (_comparisonCts != null)
-            {
-                _comparisonCts.Cancel();
-            }
+            if (_isCanceling) return;
+            _isCanceling = true;
+            _comparisonCts?.Cancel();
+            StatusText = "Canceling...";
             return;
         }
 
         IsBusy = true;
+        _isCanceling = false;
         _comparisonCts = new CancellationTokenSource();
         LeftVisibleRows.Clear();
         RightVisibleRows.Clear();
@@ -178,6 +181,17 @@ public class ComparerViewModel : ViewModelBase
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
+
+                if (Differences.Count % 100 == 0)
+                {
+                    await Task.Yield();
+                }
+
+                if (Differences.Count >= Configuration.CompareLimit)
+                {
+                    StatusText = $"Comparison stopped. Found maximum {Differences.Count} differences.";
+                    return;
+                }
             }
 
             StatusText = $"Comparison complete. Found {Differences.Count} differences.";
@@ -193,6 +207,7 @@ public class ComparerViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            _isCanceling = false;
             ComparisonProgressVisible = false;
         }
     }

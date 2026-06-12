@@ -644,6 +644,58 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    [Fact]
+    public async Task TestCompareLimit_StopsAfterDifferences()
+    {
+        var leftFile = Path.Combine(Path.GetTempPath(), "left_limit.csv");
+        var rightFile = Path.Combine(Path.GetTempPath(), "right_limit.csv");
+
+        // Save old config
+        var oldLimit = Configuration.GetRawValue(nameof(Configuration.CompareLimit));
+
+        try
+        {
+            // Set limit to 2 differences
+            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CompareLimit), "2" } });
+
+            // Create files: 
+            // Row 1: different
+            // Row 2: same
+            // Row 3: same
+            // Row 4: different
+            // Row 5: same (should not reach here or should stop here)
+            var leftLines = new List<string> { "id,val", "1,diff", "2,same", "3,same", "4,diff", "5,same" };
+            var rightLines = new List<string> { "id,val", "1,other", "2,same", "3,same", "4,other", "5,same" };
+
+            await File.WriteAllLinesAsync(leftFile, leftLines);
+            await File.WriteAllLinesAsync(rightFile, rightLines);
+
+            var results = new List<ComparisonResult>();
+            await foreach (var result in Parser.CompareAsyncEnumerable(leftFile, rightFile))
+            {
+                results.Add(result);
+            }
+
+            // Expected results:
+            // Row 1: Different
+            // Row 2: Equal
+            // Row 3: Equal
+            // Row 4: Different (now differencesFound = 2, so it yields and then breaks)
+
+            Assert.Equal(4, results.Count);
+            Assert.Equal(ComparisonStatus.Different, results[0].Status);
+            Assert.Equal(ComparisonStatus.Equal, results[1].Status);
+            Assert.Equal(ComparisonStatus.Equal, results[2].Status);
+            Assert.Equal(ComparisonStatus.Different, results[3].Status);
+        }
+        finally
+        {
+            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CompareLimit), oldLimit } });
+            if (File.Exists(leftFile)) File.Delete(leftFile);
+            if (File.Exists(rightFile)) File.Delete(rightFile);
+        }
+    }
+
     private class MockProgress(Action<int> callback) : IProgress<int>
     {
         public void Report(int value)

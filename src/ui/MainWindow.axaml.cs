@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using CSVoom.app;
@@ -55,12 +54,20 @@ public partial class MainWindow : Window
         };
 
         _viewModel.RequestShowSettings += PopulateSettingsPanel;
-        _viewModel.RequestSaveSettings += async () =>
+        _viewModel.RequestSaveSettings += () =>
         {
-            Configuration.Save(_editedSettings);
-            ApplyConfigurationToUi();
-            if (Application.Current is App app) app.UpdateTheme();
-            _viewModel.CloseInlinePanel();
+            try
+            {
+                Configuration.Save(_editedSettings);
+                ApplyConfigurationToUi();
+                if (Application.Current is App app) app.UpdateTheme();
+                _viewModel.CloseInlinePanel();
+                return Task.CompletedTask;
+            }
+            catch (Exception exception)
+            {
+                return Task.FromException(exception);
+            }
         };
 
         _viewModel.RequestShowComparer += () =>
@@ -76,9 +83,9 @@ public partial class MainWindow : Window
 
         _viewModel.RequestScrollToMatch += ScrollToMatch;
 
-        _viewModel.RequestSetVisibility += (arguments, state) =>
+        _viewModel.RequestSetVisibility += (arguments, state, ct) =>
         {
-            Command_SetVisibility(arguments, state, CancellationToken.None);
+            Command_SetVisibility(arguments, state, ct);
         };
 
         _viewModel.RequestResolveHeaders += FindHeadersByNameLetterOrRegex;
@@ -165,7 +172,7 @@ public partial class MainWindow : Window
     }
 
 
-    private void ScrollToMatch(CsvRow? row, string header, string? columnLetter = null)
+    private void ScrollToMatch(CsvRow? row, string? header, string? columnLetter = null)
     {
         if (row == null) return;
 
@@ -193,6 +200,7 @@ public partial class MainWindow : Window
             {
                 if (cancellationToken.IsCancellationRequested) return;
                 CsvDataGrid.Columns[i - 1].IsVisible = state;
+                if (i % 100 == 0) Thread.Yield();
             }
         }
         else
@@ -214,6 +222,7 @@ public partial class MainWindow : Window
                 {
                     if (cancellationToken.IsCancellationRequested) return;
                     CsvDataGrid.Columns[i].IsVisible = state;
+                    if ((i - start) % 100 == 0) Thread.Yield();
                 }
             }
             else
@@ -227,8 +236,7 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(searchValue)) return null;
         if (_columnsByName.TryGetValue(searchValue, out var columnByName)) return columnByName;
-        if (_columnsByLetter.TryGetValue(searchValue, out var columnByLetter)) return columnByLetter;
-        return null;
+        return _columnsByLetter.GetValueOrDefault(searchValue);
     }
 
     private List<string> FindHeadersByNameLetterOrRegex(string searchValue)
@@ -272,7 +280,10 @@ public partial class MainWindow : Window
                     .Where(c => (includeHidden || c.IsVisible) && regex.IsMatch(c.Header?.ToString() ?? ""))
                     .ToList();
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         }
 
         var column = FindColumnByNameOrLetter(searchValue);
