@@ -10,17 +10,10 @@ namespace CSVoom.ui.ViewModels;
 
 public class ComparerViewModel : ViewModelBase
 {
-    private string? _leftFilePath;
-    private string? _rightFilePath;
-    private string _statusText = "Import two CSV files to compare them.";
-    private bool _isBusy;
-    private bool _comparisonProgressVisible;
-    private bool _comparisonProgressIndeterminate;
-    private string _compareButtonText = "Compare";
     private CancellationTokenSource? _comparisonCts;
 
-    public Parser LeftParser { get; } = new();
-    public Parser RightParser { get; } = new();
+    private Parser LeftParser { get; } = new();
+    private Parser RightParser { get; } = new();
 
     public ObservableCollection<CsvRow> LeftVisibleRows { get; } = [];
     public ObservableCollection<CsvRow> RightVisibleRows { get; } = [];
@@ -28,28 +21,28 @@ public class ComparerViewModel : ViewModelBase
 
     public string? LeftFilePath
     {
-        get => _leftFilePath;
-        set => SetField(ref _leftFilePath, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public string? RightFilePath
     {
-        get => _rightFilePath;
-        set => SetField(ref _rightFilePath, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public string StatusText
     {
-        get => _statusText;
-        set => SetField(ref _statusText, value);
-    }
+        get;
+        set => SetField(ref field, value);
+    } = "Import two CSV files to compare them.";
 
-    public bool IsBusy
+    private bool IsBusy
     {
-        get => _isBusy;
+        get;
         set
         {
-            if (SetField(ref _isBusy, value))
+            if (SetField(ref field, value))
             {
                 CompareButtonText = value ? "Cancel" : "Compare";
                 OnPropertyChanged(nameof(CanImport));
@@ -61,21 +54,21 @@ public class ComparerViewModel : ViewModelBase
 
     public bool ComparisonProgressVisible
     {
-        get => _comparisonProgressVisible;
-        set => SetField(ref _comparisonProgressVisible, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public bool ComparisonProgressIndeterminate
     {
-        get => _comparisonProgressIndeterminate;
-        set => SetField(ref _comparisonProgressIndeterminate, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public string CompareButtonText
     {
-        get => _compareButtonText;
-        set => SetField(ref _compareButtonText, value);
-    }
+        get;
+        set => SetField(ref field, value);
+    } = "Compare";
 
     public event Func<string, Parser, ObservableCollection<CsvRow>, Task>? RequestFileLoad;
     public event Action<DifferenceDetail, int>? RequestNavigation;
@@ -119,7 +112,7 @@ public class ComparerViewModel : ViewModelBase
         {
             if (_isCanceling) return;
             _isCanceling = true;
-            _comparisonCts?.Cancel();
+            await _comparisonCts?.CancelAsync()!;
             StatusText = "Canceling...";
             return;
         }
@@ -153,33 +146,19 @@ public class ComparerViewModel : ViewModelBase
                 {
                     case ComparisonStatus.AnomalousColumn when result.DifferentColumns != null:
                     {
-                        foreach (var colIndex in result.DifferentColumns)
-                        {
-                            var colHeader = colIndex < LeftParser.Headers.Count ? LeftParser.Headers[colIndex] : (colIndex + 1).ToString();
-                            details.Add(new DifferenceDetail($"[ANOMALOUS] {colHeader}", colIndex, "Column not found"));
-                        }
+                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Column not found")));
                         break;
                     }
                     case ComparisonStatus.Different when result.DifferentColumns != null:
                     {
-                        foreach (var colIndex in result.DifferentColumns)
-                        {
-                            var colHeader = colIndex < LeftParser.Headers.Count ? LeftParser.Headers[colIndex] : (colIndex + 1).ToString();
-
-                            details.Add(new DifferenceDetail(
-                                colHeader,
-                                colIndex,
-                                "Value mismatch"
-                            ));
-                        }
-
+                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Value mismatch")));
                         break;
                     }
                     case ComparisonStatus.LeftOnly:
-                        details.Add(new DifferenceDetail("Row", -1, "Row only in left file"));
+                        details.Add(new DifferenceDetail(-1, "Row only in left file"));
                         break;
                     case ComparisonStatus.RightOnly:
-                        details.Add(new DifferenceDetail("Row", -1, "Row only in right file"));
+                        details.Add(new DifferenceDetail(-1, "Row only in right file"));
                         break;
                     case ComparisonStatus.Equal:
                         break;

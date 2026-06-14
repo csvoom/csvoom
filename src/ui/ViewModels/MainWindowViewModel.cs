@@ -10,70 +10,62 @@ namespace CSVoom.ui.ViewModels;
 
 public class MainWindowViewModel : ViewModelBase
 {
-    private string _commandText = "";
-    private string _statusText = "Choose a CSV file to display its contents.";
-    private string _totalRowsText = "";
-    private string _commandExampleText = "";
-    private string _versionText = "";
-    private bool _isBusy;
-    private bool _inlinePanelVisible;
-    private bool _settingsPanelVisible;
-    private bool _navigatePanelVisible;
-    private bool _commandHistoryPanelVisible;
-    private string? _selectedNavigateColumn;
-    private string? _selectedNavigateRow;
     private string? _currentFilePath;
 
     public ObservableCollection<string> CommandHistory { get; } = [];
     public ObservableCollection<CsvRow> VisibleRows { get; } = [];
     public ObservableCollection<string> NavigateColumnOptions { get; } = [];
 
+    public string WindowTitle
+    {
+        get;
+        set => SetField(ref field, value);
+    } = "CSVoom";
+
     public string CommandText
     {
-        get => _commandText;
+        get;
         set
         {
-            if (SetField(ref _commandText, value))
+            if (SetField(ref field, value))
             {
                 UpdateCommandExample(value);
             }
         }
-    }
+    } = "";
 
     public string StatusText
     {
-        get => _statusText;
-        set => SetField(ref _statusText, value);
-    }
+        get;
+        set => SetField(ref field, value);
+    } = "Choose a CSV file to display its contents.";
 
     public string TotalRowsText
     {
-        get => _totalRowsText;
-        set => SetField(ref _totalRowsText, value);
-    }
+        get;
+        set => SetField(ref field, value);
+    } = "";
 
     public string CommandExampleText
     {
-        get => _commandExampleText;
-        set => SetField(ref _commandExampleText, value);
-    }
+        get;
+        set => SetField(ref field, value);
+    } = "";
 
     public string VersionText
     {
-        get => _versionText;
-        set => SetField(ref _versionText, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     private bool IsBusy
     {
-        get => _isBusy;
+        get;
         set
         {
-            if (SetField(ref _isBusy, value))
-            {
-                OnPropertyChanged(nameof(CanRunCommand));
-                OnPropertyChanged(nameof(RunButtonText));
-            }
+            if (!SetField(ref field, value)) return;
+            OnPropertyChanged(nameof(CanRunCommand));
+            OnPropertyChanged(nameof(RunButtonText));
         }
     }
 
@@ -83,38 +75,38 @@ public class MainWindowViewModel : ViewModelBase
 
     public bool InlinePanelVisible
     {
-        get => _inlinePanelVisible;
-        set => SetField(ref _inlinePanelVisible, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public bool SettingsPanelVisible
     {
-        get => _settingsPanelVisible;
-        set => SetField(ref _settingsPanelVisible, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public bool NavigatePanelVisible
     {
-        get => _navigatePanelVisible;
-        set => SetField(ref _navigatePanelVisible, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public bool CommandHistoryPanelVisible
     {
-        get => _commandHistoryPanelVisible;
-        set => SetField(ref _commandHistoryPanelVisible, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public string? SelectedNavigateColumn
     {
-        get => _selectedNavigateColumn;
-        set => SetField(ref _selectedNavigateColumn, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public string? SelectedNavigateRow
     {
-        get => _selectedNavigateRow;
-        set => SetField(ref _selectedNavigateRow, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public AsyncRelayCommand RunCommand { get; }
@@ -256,6 +248,7 @@ public class MainWindowViewModel : ViewModelBase
                 {
                     StatusText = $"Loading {filePath}...";
                     _currentFilePath = filePath;
+                    WindowTitle = $"CSVoom - {System.IO.Path.GetFileName(filePath)}";
                     await CurrentParser.ReadHeadersAsync(filePath, ct);
                     RequestColumnInitialization?.Invoke(CurrentParser);
                     await LoadRangeIntoViewAsync(1, Configuration.AutoLoadRows, ct);

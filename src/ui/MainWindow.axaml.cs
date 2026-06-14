@@ -83,10 +83,7 @@ public partial class MainWindow : Window
 
         _viewModel.RequestScrollToMatch += ScrollToMatch;
 
-        _viewModel.RequestSetVisibility += (arguments, state, ct) =>
-        {
-            Command_SetVisibility(arguments, state, ct);
-        };
+        _viewModel.RequestSetVisibility += Command_SetVisibility;
 
         _viewModel.RequestResolveHeaders += FindHeadersByNameLetterOrRegex;
 

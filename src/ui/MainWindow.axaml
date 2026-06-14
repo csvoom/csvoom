@@ -7,7 +7,7 @@
         x:Class="CSVoom.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Name="MainWindowElement"
-        Title="CSVoom">
+        Title="{Binding WindowTitle}">
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0">
         <!-- Top bar -->
         <Menu Grid.Row="0">

@@ -12,8 +12,6 @@ public class RelayCommand(Action<object?> execute, Predicate<object?>? canExecut
     public void Execute(object? parameter) => execute(parameter);
 
     public event EventHandler? CanExecuteChanged;
-
-    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
 
 public class AsyncRelayCommand(Func<object?, Task> execute, Predicate<object?>? canExecute = null, bool allowConcurrent = false) : ICommand
@@ -44,5 +42,5 @@ public class AsyncRelayCommand(Func<object?, Task> execute, Predicate<object?>? 
 
     public event EventHandler? CanExecuteChanged;
 
-    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    private void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }

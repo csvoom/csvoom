@@ -27,7 +27,7 @@ public partial class Comparer : Window
             await LoadFileAsync(path, parser, dataGrid, rows);
         };
 
-        _viewModel.RequestNavigation += (detail, row) => NavigateToDifference(detail, row);
+        _viewModel.RequestNavigation += NavigateToDifference;
     }
 
     private async void ImportLeft_Click(object? sender, RoutedEventArgs e)
