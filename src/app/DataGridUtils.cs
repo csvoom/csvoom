@@ -21,8 +21,8 @@ public static class DataGridUtils
 
         var rowNumberColumn = new DataGridTextColumn
         {
-            Header = "",
-            Binding = new Binding("RowNumber"),
+            Header = Configuration.FirstRowIsHeader ? "C0: R1" : "C0: R0",
+            Binding = new Binding("RowId"),
             SortMemberPath = "RowNumber",
             IsReadOnly = true,
             CanUserSort = false
@@ -34,13 +34,11 @@ public static class DataGridUtils
         for (var i = 0; i < parser.Headers.Count; i++)
         {
             var header = parser.Headers[i];
-            var columnIdentifier = Configuration.UseNumbersForColumns
-                ? i.ToString()
-                : Parser.GetColumnLetter(i);
+            var columnIdentifier = Parser.GetColumnIdentifier(i);
 
             var column = new DataGridTextColumn
             {
-                Header = $"{columnIdentifier}: {header}",
+                Header = Configuration.FirstRowIsHeader ? $"{columnIdentifier}: {header}" : header,
                 Binding = new Binding($"Values[{i}]"),
                 SortMemberPath = $"Values[{i}]"
             };

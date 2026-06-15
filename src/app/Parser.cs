@@ -29,6 +29,8 @@ public class CsvRow(string[] values, int rowNumber)
     /// </summary>
     public int RowNumber { get; } = rowNumber;
 
+    public string RowId => $"R{RowNumber}";
+
     /// <summary>
     ///     Gets the field value at the specified index.
     /// </summary>
@@ -249,7 +251,7 @@ public class Parser
             var firstRow = ParseCsvLine(enumerator.Current);
             Headers = Configuration.FirstRowIsHeader
                 ? firstRow
-                : Enumerable.Range(0, firstRow.Count).Select(GetColumnLetter).ToList();
+                : Enumerable.Range(0, firstRow.Count).Select(i => $"C{i + 1}").ToList();
         }
         else
         {
@@ -298,20 +300,11 @@ public class Parser
     }
 
     /// <summary>
-    ///     Converts a zero-based data column index into its spreadsheet-style column letter.
+    ///     Converts a zero-based data column index into its spreadsheet-style column identifier.
     /// </summary>
-    public static string GetColumnLetter(int columnIndex)
+    public static string GetColumnIdentifier(int columnIndex)
     {
-        var letter = string.Empty;
-        columnIndex++;
-        while (columnIndex > 0)
-        {
-            columnIndex--;
-            letter = (char)('A' + columnIndex % 26) + letter;
-            columnIndex /= 26;
-        }
-
-        return letter;
+        return $"C{columnIndex + 1}";
     }
 
     /// <summary>
@@ -390,10 +383,6 @@ public class Parser
             var row = BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
             var foundInThisRow = false;
 
-            // BUG: The code was using 'headers' which might be the parser's internal 'Headers' list.
-            // When iterating, it should only check the headers specified in 'headersToSearch'.
-            // Wait, 'headers' IS derived from 'headersToSearch'.
-
             foreach (var header in headers)
             {
                 if (matchCount >= maxMatches) break;
@@ -403,7 +392,7 @@ public class Parser
 
                 matchCount++;
                 foundInThisRow = true;
-                yield return (row, header, value, currentRowNumber);
+                yield return (row, header, value, row.RowNumber);
             }
 
             if (foundInThisRow) progress?.Report(matchCount);

@@ -51,24 +51,10 @@ public static class Configuration
     public static bool ShowCommandExamples => GetBool(nameof(ShowCommandExamples), true);
 
     /// <summary>
-    ///     Gets a value indicating whether column headers should be created.
-    /// </summary>
-    public static bool CreateColumnHeaders => GetBool(nameof(CreateColumnHeaders), true);
-
-    /// <summary>
-    ///     Gets a value indicating whether row numbers should be created.
-    /// </summary>
-    public static bool CreateRowNumbers => GetBool(nameof(CreateRowNumbers), true);
-
-    /// <summary>
     ///     Gets a value indicating whether the first row is treated as a header.
     /// </summary>
     public static bool FirstRowIsHeader => GetBool(nameof(FirstRowIsHeader), true);
 
-    /// <summary>
-    ///     Gets a value indicating whether numbers should identify columns instead of letters.
-    /// </summary>
-    public static bool UseNumbersForColumns => GetBool(nameof(UseNumbersForColumns), false);
 
     /// <summary>
     ///     Gets the file patterns to match CSV files.
@@ -97,11 +83,7 @@ public static class Configuration
         new(nameof(CaseInsensitiveSearch), "Boolean", "true", "Whether to perform case-insensitive search."),
         new(nameof(RegexSearch), "Boolean", "true", "Whether to seek regex out of command input."),
         new(nameof(ShowCommandExamples), "Boolean", "true", "Whether to show examples for command usage."),
-        new(nameof(CreateColumnHeaders), "Boolean", "true", "Whether to move the first row into column headers."),
-        new(nameof(CreateRowNumbers), "Boolean", "true", "Whether to add an automatic numbers column."),
         new(nameof(FirstRowIsHeader), "Boolean", "true", "Whether to treat the first row as a header."),
-        new(nameof(UseNumbersForColumns), "Boolean", "false",
-            "Whether to use numbers instead of letters to identify columns."),
         new(nameof(CsvFilePatterns), "String", "*.csv;*.gz;*.ssv;*.tsv", "File patterns to match CSV files."),
         new(nameof(Theme), "String", "Dark", "Theme variant: Light or Dark.")
     ];

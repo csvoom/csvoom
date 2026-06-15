@@ -490,7 +490,7 @@ public class MainWindowViewModel : ViewModelBase
         var count = await CurrentParser.GetRowCountAsync(_currentFilePath);
         var colCount = CurrentParser.Headers.Count;
         var colRange = colCount > 0 
-            ? $" ({Parser.GetColumnLetter(0)}-{Parser.GetColumnLetter(colCount - 1)})" 
+            ? $" ({Parser.GetColumnIdentifier(0)}-{Parser.GetColumnIdentifier(colCount - 1)})"
             : "";
         TotalRowsText = $"{count} rows | {colCount} columns {colRange}";
     }
