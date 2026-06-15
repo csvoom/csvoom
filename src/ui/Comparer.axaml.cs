@@ -90,9 +90,9 @@ public partial class Comparer : Window
 
     private void NavigateToDifference_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: DifferenceDetail detail, DataContext: DifferenceItem item })
+        if (sender is Button { Tag: DifferenceDetail detail })
         {
-            _viewModel.NavigateToDifference(detail, item.Row);
+            _viewModel.NavigateToDifference(detail, detail.Row);
         }
     }
 

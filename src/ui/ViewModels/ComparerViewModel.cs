@@ -146,19 +146,19 @@ public class ComparerViewModel : ViewModelBase
                 {
                     case ComparisonStatus.AnomalousColumn when result.DifferentColumns != null:
                     {
-                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Column not found")));
+                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Column not found", result.RowNumber)));
                         break;
                     }
                     case ComparisonStatus.Different when result.DifferentColumns != null:
                     {
-                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Value mismatch")));
+                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Value mismatch", result.RowNumber)));
                         break;
                     }
                     case ComparisonStatus.LeftOnly:
-                        details.Add(new DifferenceDetail(-1, "Row only in left file"));
+                        details.Add(new DifferenceDetail(-1, "Row only in left file", result.RowNumber));
                         break;
                     case ComparisonStatus.RightOnly:
-                        details.Add(new DifferenceDetail(-1, "Row only in right file"));
+                        details.Add(new DifferenceDetail(-1, "Row only in right file", result.RowNumber));
                         break;
                     case ComparisonStatus.Equal:
                         break;
