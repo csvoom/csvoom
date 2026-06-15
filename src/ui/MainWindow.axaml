@@ -31,7 +31,7 @@
             <TextBox
                 x:Name="CommandTextBox"
                 Text="{Binding CommandText, Mode=TwoWay}"
-                Watermark="Command. eg: load, find, hide..."
+                PlaceholderText="Command. eg: load, find, hide..."
                 KeyDown="CommandTextBox_KeyDown"
                 HorizontalAlignment="Stretch"
                 MinWidth="320" />
@@ -75,7 +75,7 @@
                                          FilterMode="Contains" />
                         <TextBlock Text="Row:" VerticalAlignment="Center" />
                         <TextBox Text="{Binding SelectedNavigateRow, Mode=TwoWay}" 
-                                 Width="100" Watermark="Row number" />
+                                 Width="100" PlaceholderText="Row number" />
                         <Button Content="Go" Command="{Binding NavigateGoCommand}" />
                     </StackPanel>
                 </StackPanel>

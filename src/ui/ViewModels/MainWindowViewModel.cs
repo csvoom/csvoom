@@ -250,6 +250,8 @@ public class MainWindowViewModel : ViewModelBase
                     _currentFilePath = filePath;
                     WindowTitle = $"CSVoom - {System.IO.Path.GetFileName(filePath)}";
                     await CurrentParser.ReadHeadersAsync(filePath, ct);
+                    NavigateColumnOptions.Clear();
+                    foreach (var header in CurrentParser.Headers) NavigateColumnOptions.Add(header);
                     RequestColumnInitialization?.Invoke(CurrentParser);
                     await LoadRangeIntoViewAsync(1, Configuration.AutoLoadRows, ct);
                     StatusText = $"Loaded {filePath}.";
@@ -285,8 +287,10 @@ public class MainWindowViewModel : ViewModelBase
 
     private async Task NavigateGoAsync()
     {
-        if (string.IsNullOrEmpty(SelectedNavigateRow)) return;
-        if (!int.TryParse(SelectedNavigateRow, out var row)) return;
+        if (!int.TryParse(SelectedNavigateRow, out var row))
+        {
+            row = Configuration.FirstRowIsHeader ? 2 : 1;
+        }
 
         var startRow = ((row - 1) / Configuration.AutoLoadRows) * Configuration.AutoLoadRows + 1;
         var endRow = startRow + Configuration.AutoLoadRows - 1;
@@ -328,6 +332,8 @@ public class MainWindowViewModel : ViewModelBase
             {
                 case "load":
                     await Command_LoadAsync(arguments, ct);
+                    NavigateColumnOptions.Clear();
+                    foreach (var header in CurrentParser.Headers) NavigateColumnOptions.Add(header);
                     break;
                 case "find":
                     await Command_FindAsync(arguments, ct);

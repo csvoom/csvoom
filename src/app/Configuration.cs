@@ -11,11 +11,6 @@ namespace CSVoom.app;
 public static class Configuration
 {
     /// <summary>
-    ///     Gets the application version.
-    /// </summary>
-    public static string Version => "1.0.0";
-
-    /// <summary>
     ///     Gets the number of rows to load automatically.
     /// </summary>
     public static int AutoLoadRows => GetInt(nameof(AutoLoadRows), 10000, 1);
@@ -71,7 +66,7 @@ public static class Configuration
     public static bool FirstRowIsHeader => GetBool(nameof(FirstRowIsHeader), true);
 
     /// <summary>
-    ///     Gets a value indicating whether columns should be identified by numbers instead of letters.
+    ///     Gets a value indicating whether numbers should identify columns instead of letters.
     /// </summary>
     public static bool UseNumbersForColumns => GetBool(nameof(UseNumbersForColumns), false);
 
@@ -148,7 +143,7 @@ public static class Configuration
     /// <summary>
     ///     Resolves an integer configuration value.
     /// </summary>
-    public static int GetInt(string key, int defaultValue, int? minValue = null, int? maxValue = null)
+    private static int GetInt(string key, int defaultValue, int? minValue = null, int? maxValue = null)
     {
         var value = ConfigurationManager.AppSettings[key];
         if (string.IsNullOrWhiteSpace(value)) return defaultValue;
