@@ -154,6 +154,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void NavigateToMatch_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: DifferenceDetail detail })
+        {
+            _viewModel.NavigateToMatchCommand.Execute(detail);
+        }
+    }
+
     private void ApplyConfigurationToUi()
     {
         if (_viewModel.ShowCommandExamples)

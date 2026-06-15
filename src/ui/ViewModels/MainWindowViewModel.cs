@@ -15,6 +15,7 @@ public class MainWindowViewModel : ViewModelBase
     public ObservableCollection<string> CommandHistory { get; } = [];
     public ObservableCollection<CsvRow> VisibleRows { get; } = [];
     public ObservableCollection<string> NavigateColumnOptions { get; } = [];
+    public ObservableCollection<DifferenceDetail> SearchResults { get; } = [];
 
     public string WindowTitle
     {
@@ -97,6 +98,12 @@ public class MainWindowViewModel : ViewModelBase
         set => SetField(ref field, value);
     }
 
+    public bool SearchResultsVisible
+    {
+        get;
+        set => SetField(ref field, value);
+    }
+
     public string? SelectedNavigateColumn
     {
         get;
@@ -118,6 +125,7 @@ public class MainWindowViewModel : ViewModelBase
     public RelayCommand CommandHistoryCommand { get; }
     public RelayCommand CloseInlinePanelCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
+    public RelayCommand NavigateToMatchCommand { get; }
     public AsyncRelayCommand NavigateGoCommand { get; }
 
     private static readonly IReadOnlyList<string> CommandSuggestions =
@@ -167,6 +175,7 @@ public class MainWindowViewModel : ViewModelBase
         CommandHistoryCommand = new RelayCommand(_ => ShowCommandHistory());
         CloseInlinePanelCommand = new RelayCommand(_ => CloseInlinePanel());
         SaveSettingsCommand = new RelayCommand(_ => RequestSaveSettings?.Invoke());
+        NavigateToMatchCommand = new RelayCommand(obj => NavigateToMatch((DifferenceDetail)obj!));
         NavigateGoCommand = new AsyncRelayCommand(_ => NavigateGoAsync());
         
         VersionText = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
@@ -178,6 +187,7 @@ public class MainWindowViewModel : ViewModelBase
         SettingsPanelVisible = false;
         NavigatePanelVisible = false;
         CommandHistoryPanelVisible = false;
+        SearchResultsVisible = false;
     }
 
     private void ShowSettings()
@@ -292,12 +302,22 @@ public class MainWindowViewModel : ViewModelBase
             row = Configuration.FirstRowIsHeader ? 2 : 1;
         }
 
+        await NavigateToRowAndColumn(row, SelectedNavigateColumn ?? "");
+        CloseInlinePanel();
+    }
+
+    private async Task NavigateToRowAndColumn(int row, string column)
+    {
         var startRow = ((row - 1) / Configuration.AutoLoadRows) * Configuration.AutoLoadRows + 1;
         var endRow = startRow + Configuration.AutoLoadRows - 1;
 
         await LoadRangeIntoViewAsync(startRow, endRow);
-        RequestScrollToMatch?.Invoke(VisibleRows.FirstOrDefault(r => r.RowNumber == row), SelectedNavigateColumn ?? "", null);
-        CloseInlinePanel();
+        RequestScrollToMatch?.Invoke(VisibleRows.FirstOrDefault(r => r.RowNumber == row), column, null);
+    }
+
+    private void NavigateToMatch(DifferenceDetail detail)
+    {
+        _ = NavigateToRowAndColumn(detail.Row, detail.Description);
     }
 
     private bool _isCanceling;
@@ -418,6 +438,7 @@ public class MainWindowViewModel : ViewModelBase
         });
 
         VisibleRows.Clear();
+        SearchResults.Clear();
         var foundCount = 0;
 
         List<string>? searchHeaders = null;
@@ -427,6 +448,7 @@ public class MainWindowViewModel : ViewModelBase
         }
 
         var matches = new List<CsvRow>();
+
         await foreach (var match in CurrentParser.ReadMatchesAsyncEnumerable(
                            _currentFilePath,
                            Parser.CreateSearchMatcher(searchText),
@@ -439,6 +461,10 @@ public class MainWindowViewModel : ViewModelBase
             {
                 matches.Add(match.Row);
             }
+
+            var columnIndex = CurrentParser.Headers.IndexOf(match.Header);
+            SearchResults.Add(new DifferenceDetail(columnIndex, match.Header, match.RowNumber));
+
             foundCount++;
 
             if (matches.Count % 100 == 0)
@@ -451,6 +477,12 @@ public class MainWindowViewModel : ViewModelBase
         foreach (var row in matches)
         {
             VisibleRows.Add(row);
+        }
+
+        if (SearchResults.Count > 0)
+        {
+            SearchResultsVisible = true;
+            InlinePanelVisible = true;
         }
 
         StatusText = $"Found {foundCount:N0} instance(s) of {searchDescription}.";

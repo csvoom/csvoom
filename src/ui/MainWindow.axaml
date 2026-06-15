@@ -95,6 +95,27 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </StackPanel>
+
+                <!-- Search Results Panel -->
+                <StackPanel IsVisible="{Binding SearchResultsVisible}" Spacing="8">
+                    <DockPanel>
+                        <TextBlock Text="Search Results" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
+                        <Button Content="Close" Command="{Binding CloseInlinePanelCommand}" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <ScrollViewer MaxHeight="300">
+                        <ItemsControl ItemsSource="{Binding SearchResults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DifferenceDetail">
+                                    <Button Content="{Binding DisplayLabel}"
+                                            Click="NavigateToMatch_Click"
+                                            Tag="{Binding}"
+                                            HorizontalAlignment="Stretch"
+                                            Margin="2" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
             </Grid>
         </Border>
         <DataGrid

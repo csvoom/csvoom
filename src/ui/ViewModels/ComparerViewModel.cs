@@ -87,6 +87,11 @@ public class ComparerViewModel : ViewModelBase
         {
             await RequestFileLoad(filePath, LeftParser, LeftVisibleRows);
         }
+
+        if (RightFilePath != null)
+        {
+            await CompareAsync();
+        }
     }
 
     public async Task LoadRightFileAsync(string filePath)
@@ -95,6 +100,11 @@ public class ComparerViewModel : ViewModelBase
         if (RequestFileLoad != null)
         {
             await RequestFileLoad(filePath, RightParser, RightVisibleRows);
+        }
+
+        if (LeftFilePath != null)
+        {
+            await CompareAsync();
         }
     }
 
