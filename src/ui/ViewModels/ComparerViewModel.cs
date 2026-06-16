@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Controls;
 using CSVoom.app;
 
 namespace CSVoom.ui.ViewModels;
@@ -70,7 +71,7 @@ public class ComparerViewModel : ViewModelBase
         set => SetField(ref field, value);
     } = "Compare";
 
-    public event Func<string, Parser, ObservableCollection<CsvRow>, Task>? RequestFileLoad;
+    public event Func<string, Parser, DataGrid, ObservableCollection<CsvRow>, Task>? RequestFileLoad;
     public event Action<DifferenceDetail, int>? RequestNavigation;
 
     public AsyncRelayCommand CompareCommand { get; }
@@ -80,12 +81,12 @@ public class ComparerViewModel : ViewModelBase
         CompareCommand = new AsyncRelayCommand(_ => CompareAsync(), allowConcurrent: true);
     }
 
-    public async Task LoadLeftFileAsync(string filePath)
+    public async Task LoadLeftFileAsync(string filePath, DataGrid dataGrid)
     {
         LeftFilePath = filePath;
         if (RequestFileLoad != null)
         {
-            await RequestFileLoad(filePath, LeftParser, LeftVisibleRows);
+            await RequestFileLoad(filePath, LeftParser, dataGrid, LeftVisibleRows);
         }
 
         if (RightFilePath != null)
@@ -94,12 +95,12 @@ public class ComparerViewModel : ViewModelBase
         }
     }
 
-    public async Task LoadRightFileAsync(string filePath)
+    public async Task LoadRightFileAsync(string filePath, DataGrid dataGrid)
     {
         RightFilePath = filePath;
         if (RequestFileLoad != null)
         {
-            await RequestFileLoad(filePath, RightParser, RightVisibleRows);
+            await RequestFileLoad(filePath, RightParser, dataGrid, RightVisibleRows);
         }
 
         if (LeftFilePath != null)

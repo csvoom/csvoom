@@ -9,6 +9,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using CSVoom.app;
 using CSVoom.ui;
 using CSVoom.ui.ViewModels;
@@ -78,6 +79,7 @@ public partial class MainWindow : Window
         _viewModel.RequestColumnInitialization += (parser) =>
         {
             DataGridUtils.InitializeColumns(CsvDataGrid, parser, _columnsByName, _columnsByLetter);
+            Dispatcher.UIThread.Post(() => DataGridUtils.ApplyFrozenColumn(CsvDataGrid), DispatcherPriority.Background);
         };
 
         _viewModel.RequestScrollToMatch += ScrollToMatch;
@@ -164,7 +166,23 @@ public partial class MainWindow : Window
     private void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
-        _viewModel.RunCommand.Execute(null);
+
+        if (_viewModel.NavigatePanelVisible)
+        {
+            _viewModel.NavigateGoCommand.Execute(null);
+        }
+        else
+        {
+            _viewModel.RunCommand.Execute(null);
+        }
+    }
+
+    private void NavigateControl_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            _viewModel.NavigateGoCommand.Execute(null);
+        }
     }
 
 

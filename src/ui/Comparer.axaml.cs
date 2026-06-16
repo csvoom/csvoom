@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using CSVoom.app;
 using CSVoom.ui;
 using CSVoom.ui.ViewModels;
@@ -14,6 +16,10 @@ namespace CSVoom;
 public partial class Comparer : Window
 {
     private readonly ComparerViewModel _viewModel;
+    private readonly Dictionary<string, DataGridColumn> _leftColumnsByLetter = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DataGridColumn> _leftColumnsByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DataGridColumn> _rightColumnsByLetter = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DataGridColumn> _rightColumnsByName = new(StringComparer.OrdinalIgnoreCase);
 
     public Comparer()
     {
@@ -21,9 +27,8 @@ public partial class Comparer : Window
         _viewModel = new ComparerViewModel();
         DataContext = _viewModel;
 
-        _viewModel.RequestFileLoad += async (path, parser, rows) =>
+        _viewModel.RequestFileLoad += async (path, parser, dataGrid, rows) =>
         {
-            var dataGrid = rows == _viewModel.LeftVisibleRows ? LeftDataGrid : RightDataGrid;
             await LoadFileAsync(path, parser, dataGrid, rows);
         };
 
@@ -35,7 +40,7 @@ public partial class Comparer : Window
         var filePath = await OpenFileAsync("Import Left CSV");
         if (filePath != null)
         {
-            await _viewModel.LoadLeftFileAsync(filePath);
+            await _viewModel.LoadLeftFileAsync(filePath, LeftDataGrid);
         }
     }
 
@@ -44,7 +49,7 @@ public partial class Comparer : Window
         var filePath = await OpenFileAsync("Import Right CSV");
         if (filePath != null)
         {
-            await _viewModel.LoadRightFileAsync(filePath);
+            await _viewModel.LoadRightFileAsync(filePath, RightDataGrid);
         }
     }
 
@@ -76,7 +81,18 @@ public partial class Comparer : Window
         {
             _viewModel.StatusText = $"Loading {filePath}...";
             await parser.ReadHeadersAsync(filePath);
-            DataGridUtils.InitializeColumns(dataGrid, parser);
+
+            if (dataGrid == LeftDataGrid)
+            {
+                DataGridUtils.InitializeColumns(dataGrid, parser, _leftColumnsByName, _leftColumnsByLetter);
+            }
+            else
+            {
+                DataGridUtils.InitializeColumns(dataGrid, parser, _rightColumnsByName, _rightColumnsByLetter);
+            }
+
+            Dispatcher.UIThread.Post(() => DataGridUtils.ApplyFrozenColumn(dataGrid), DispatcherPriority.Background);
+
             visibleRows.Clear();
             var rows = await parser.ReadRangeAsync(filePath, 1, Configuration.AutoLoadRows);
             foreach (var row in rows) visibleRows.Add(row);
@@ -121,10 +137,17 @@ public partial class Comparer : Window
         }
 
         if (detail.ColumnIndex < 0) return;
-        var gridColumnIndex = detail.ColumnIndex + DataGridUtils.RowNumberColumnOffset;
-        if (gridColumnIndex < LeftDataGrid.Columns.Count)
-            LeftDataGrid.ScrollIntoView(null, LeftDataGrid.Columns[gridColumnIndex]);
-        if (gridColumnIndex < RightDataGrid.Columns.Count)
-            RightDataGrid.ScrollIntoView(null, RightDataGrid.Columns[gridColumnIndex]);
+
+        var leftColumn = _leftColumnsByLetter.GetValueOrDefault(Parser.GetColumnIdentifier(detail.ColumnIndex));
+        if (leftColumn != null)
+        {
+            LeftDataGrid.ScrollIntoView(null, leftColumn);
+        }
+
+        var rightColumn = _rightColumnsByLetter.GetValueOrDefault(Parser.GetColumnIdentifier(detail.ColumnIndex));
+        if (rightColumn != null)
+        {
+            RightDataGrid.ScrollIntoView(null, rightColumn);
+        }
     }
 }

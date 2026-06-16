@@ -189,6 +189,7 @@ public class MainWindowViewModel : ViewModelBase
     public RelayCommand CommandHistoryCommand { get; }
     public RelayCommand CloseInlinePanelCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
+    public RelayCommand SearchResultsCommand { get; }
     public RelayCommand NavigateToMatchCommand { get; }
     public AsyncRelayCommand NavigateGoCommand { get; }
 
@@ -228,6 +229,7 @@ public class MainWindowViewModel : ViewModelBase
         ComparerCommand = new RelayCommand(_ => RequestShowComparer?.Invoke());
         NavigateCommand = new RelayCommand(_ => ShowNavigate());
         CommandHistoryCommand = new RelayCommand(_ => ShowCommandHistory());
+        SearchResultsCommand = new RelayCommand(_ => ShowSearchResults());
         CloseInlinePanelCommand = new RelayCommand(_ => CloseInlinePanel());
         SaveSettingsCommand = new RelayCommand(_ => RequestSaveSettings?.Invoke());
         NavigateToMatchCommand = new RelayCommand(obj => NavigateToMatch((DifferenceDetail)obj!));
@@ -285,6 +287,20 @@ public class MainWindowViewModel : ViewModelBase
         {
             CloseInlinePanel();
             CommandHistoryPanelVisible = true;
+            InlinePanelVisible = true;
+        }
+    }
+
+    private void ShowSearchResults()
+    {
+        if (SearchResultsVisible)
+        {
+            CloseInlinePanel();
+        }
+        else
+        {
+            CloseInlinePanel();
+            SearchResultsVisible = true;
             InlinePanelVisible = true;
         }
     }
@@ -353,11 +369,17 @@ public class MainWindowViewModel : ViewModelBase
 
     private async Task NavigateToRowAndColumn(int row, string column)
     {
-        var startRow = ((row - 1) / Configuration.AutoLoadRows) * Configuration.AutoLoadRows + 1;
-        var endRow = startRow + Configuration.AutoLoadRows - 1;
+        var targetRow = VisibleRows.FirstOrDefault(r => r.RowNumber == row);
+        if (targetRow != null)
+        {
+            RequestScrollToMatch?.Invoke(targetRow, column, null);
+        }
+        else
+        {
+            StatusText = $"Row {row} is not currently loaded.";
+        }
 
-        await LoadRangeIntoViewAsync(startRow, endRow);
-        RequestScrollToMatch?.Invoke(VisibleRows.FirstOrDefault(r => r.RowNumber == row), column, null);
+        await Task.CompletedTask;
     }
 
     private void NavigateToMatch(DifferenceDetail detail)
@@ -473,7 +495,7 @@ public class MainWindowViewModel : ViewModelBase
         string? columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
 
         var searchDescription = Parser.IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
-        
+
         StatusText = $"Searching for {searchDescription}...";
 
         var progress = new Progress<int>(count =>
@@ -483,7 +505,6 @@ public class MainWindowViewModel : ViewModelBase
 
         VisibleRows.Clear();
         SearchResults.Clear();
-        var foundCount = 0;
 
         List<string>? searchHeaders = null;
         if (columnSearchValue != null)
@@ -492,35 +513,40 @@ public class MainWindowViewModel : ViewModelBase
         }
 
         var matches = new List<CsvRow>();
+        var details = new List<DifferenceDetail>();
+        var headers = CurrentParser.Headers;
+        var filePath = _currentFilePath;
+        var matcher = Parser.CreateSearchMatcher(searchText);
+        var autoFindRows = Configuration.AutoFindRows;
 
-        await foreach (var match in CurrentParser.ReadMatchesAsyncEnumerable(
-                           _currentFilePath,
-                           Parser.CreateSearchMatcher(searchText),
-                           searchHeaders,
-                           Configuration.AutoFindRows,
-                           progress,
-                           ct))
+        await Task.Run(async () =>
         {
-            if (!matches.Contains(match.Row))
+            await foreach (var match in CurrentParser.ReadMatchesAsyncEnumerable(
+                               filePath,
+                               matcher,
+                               searchHeaders,
+                               autoFindRows,
+                               progress,
+                               ct))
             {
-                matches.Add(match.Row);
+                if (!matches.Contains(match.Row))
+                {
+                    matches.Add(match.Row);
+                }
+
+                var columnIndex = headers.IndexOf(match.Header);
+                details.Add(new DifferenceDetail(columnIndex, match.Header, match.RowNumber));
             }
+        }, ct);
 
-            var columnIndex = CurrentParser.Headers.IndexOf(match.Header);
-            SearchResults.Add(new DifferenceDetail(columnIndex, match.Header, match.RowNumber));
-
-            foundCount++;
-
-            if (matches.Count % 100 == 0)
-            {
-                await Task.Yield();
-            }
-        }
-
-        VisibleRows.Clear();
         foreach (var row in matches)
         {
             VisibleRows.Add(row);
+        }
+
+        foreach (var detail in details)
+        {
+            SearchResults.Add(detail);
         }
 
         if (SearchResults.Count > 0)
@@ -529,7 +555,7 @@ public class MainWindowViewModel : ViewModelBase
             InlinePanelVisible = true;
         }
 
-        StatusText = $"Found {foundCount:N0} instance(s) of {searchDescription}.";
+        StatusText = $"Found {SearchResults.Count:N0} instance(s) of {searchDescription}.";
     }
 
     private async Task Command_ExportAsync(string[] arguments, CancellationToken ct)
@@ -548,15 +574,21 @@ public class MainWindowViewModel : ViewModelBase
     {
         if (_currentFilePath == null) return;
         VisibleRows.Clear();
-        var count = 0;
-        await foreach (var row in CurrentParser.ReadRangeAsyncEnumerable(_currentFilePath, startRow, endRow, ct))
+        
+        var filePath = _currentFilePath;
+        var rows = new List<CsvRow>();
+
+        await Task.Run(async () =>
+        {
+            await foreach (var row in CurrentParser.ReadRangeAsyncEnumerable(filePath, startRow, endRow, ct))
+            {
+                rows.Add(row);
+            }
+        }, ct);
+
+        foreach (var row in rows)
         {
             VisibleRows.Add(row);
-            count++;
-            if (count % 100 == 0)
-            {
-                await Task.Yield();
-            }
         }
     }
 

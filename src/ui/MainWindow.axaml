@@ -15,6 +15,7 @@
             <MenuItem Header="Export file" Command="{Binding ExportCommand}" />
             <MenuItem Header="Navigate" Command="{Binding NavigateCommand}" />
             <MenuItem Header="Command History" Command="{Binding CommandHistoryCommand}" />
+            <MenuItem Header="Search Results" Command="{Binding SearchResultsCommand}" />
             <MenuItem Header="Settings" Command="{Binding SettingsCommand}" />
             <MenuItem Header="Comparer" Command="{Binding ComparerCommand}" />
         </Menu>
@@ -84,10 +85,12 @@
                         <AutoCompleteBox ItemsSource="{Binding NavigateColumnOptions}" 
                                          Text="{Binding SelectedNavigateColumn, Mode=TwoWay}" 
                                          Width="200" MinimumPrefixLength="0"
-                                         FilterMode="Contains" />
+                                         FilterMode="Contains"
+                                         KeyDown="NavigateControl_KeyDown" />
                         <TextBlock Text="Row:" VerticalAlignment="Center" />
                         <TextBox Text="{Binding SelectedNavigateRow, Mode=TwoWay}" 
-                                 Width="100" PlaceholderText="Row number" />
+                                 Width="100" PlaceholderText="Row number"
+                                 KeyDown="NavigateControl_KeyDown" />
                         <Button Content="Go" Command="{Binding NavigateGoCommand}" />
                     </StackPanel>
                 </StackPanel>

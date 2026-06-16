@@ -62,6 +62,15 @@ public static class DataGridUtils
     }
 
     /// <summary>
+    ///     Applies the frozen column count to the <see cref="DataGrid" />.
+    /// </summary>
+    /// <param name="dataGrid">The <see cref="DataGrid" /> to update.</param>
+    public static void ApplyFrozenColumn(DataGrid dataGrid)
+    {
+        dataGrid.FrozenColumnCount = 1;
+    }
+
+    /// <summary>
     ///     Converts a zero-based grid column index to a data column index.
     /// </summary>
     /// <param name="gridColumnIndex">The zero-based grid column index.</param>
