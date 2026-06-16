@@ -8,7 +8,7 @@
         x:DataType="vm:MainWindowViewModel"
         Name="MainWindowElement"
         Title="{Binding WindowTitle}">
-    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="0">
         <!-- Top bar -->
         <Menu Grid.Row="0">
             <MenuItem Header="Import file" Command="{Binding OpenCommand}" />
@@ -23,11 +23,6 @@
             Orientation="Horizontal"
             HorizontalAlignment="Right"
             Spacing="8">
-            <TextBlock
-                Text="{Binding CommandExampleText}"
-                HorizontalAlignment="Left"
-                Opacity="0.7"
-                FontSize="13" />
             <TextBox
                 x:Name="CommandTextBox"
                 Text="{Binding CommandText, Mode=TwoWay}"
@@ -38,12 +33,29 @@
             <Button Content="{Binding RunButtonText}" Command="{Binding RunCommand}" />
         </StackPanel>
 
-        <!-- Inline Panels -->
+        <DataGrid
+            Grid.Row="1"
+            x:Name="CsvDataGrid"
+            ItemsSource="{Binding VisibleRows}"
+            CanUserSortColumns="False"
+            AutoGenerateColumns="False"
+            IsReadOnly="True"
+            GridLinesVisibility="All"
+            HeadersVisibility="All"
+            SelectionMode="Extended" />
+
+        <!-- Overlay Panels -->
         <Border Grid.Row="1"
                 IsVisible="{Binding InlinePanelVisible}"
                 BorderBrush="{DynamicResource AppBorder}"
-                BorderThickness="0,0,0,1"
-                Background="{DynamicResource AppSecondaryBackground}">
+                BorderThickness="1"
+                CornerRadius="4"
+                Background="{DynamicResource AppSecondaryBackground}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="20"
+                BoxShadow="0 4 20 0 #40000000"
+                ZIndex="100">
             <Grid Margin="8">
                 <!-- Settings Panel -->
                 <StackPanel IsVisible="{Binding SettingsPanelVisible}" Spacing="8">
@@ -118,17 +130,7 @@
                 </StackPanel>
             </Grid>
         </Border>
-        <DataGrid
-            Grid.Row="3"
-            x:Name="CsvDataGrid"
-            ItemsSource="{Binding VisibleRows}"
-            CanUserSortColumns="False"
-            AutoGenerateColumns="False"
-            IsReadOnly="True"
-            GridLinesVisibility="All"
-            HeadersVisibility="All"
-            SelectionMode="Extended" />
-        <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
             <StackPanel
                 Grid.Column="0"
                 Orientation="Horizontal">

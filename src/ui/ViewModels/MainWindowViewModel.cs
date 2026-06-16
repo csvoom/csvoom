@@ -8,51 +8,73 @@ using CSVoom.app;
 
 namespace CSVoom.ui.ViewModels;
 
+/// <summary>
+///     The main view model for the application.
+/// </summary>
 public class MainWindowViewModel : ViewModelBase
 {
     private string? _currentFilePath;
 
+    /// <summary>
+    ///     Gets the command history.
+    /// </summary>
     public ObservableCollection<string> CommandHistory { get; } = [];
+
+    /// <summary>
+    ///     Gets the rows currently visible in the grid.
+    /// </summary>
     public ObservableCollection<CsvRow> VisibleRows { get; } = [];
+
+    /// <summary>
+    ///     Gets the available column headers for navigation.
+    /// </summary>
     public ObservableCollection<string> NavigateColumnOptions { get; } = [];
+
+    /// <summary>
+    ///     Gets the search results.
+    /// </summary>
     public ObservableCollection<DifferenceDetail> SearchResults { get; } = [];
 
+    /// <summary>
+    ///     Gets or sets the window title.
+    /// </summary>
     public string WindowTitle
     {
         get;
         set => SetField(ref field, value);
     } = "CSVoom";
 
+    /// <summary>
+    ///     Gets or sets the command text entered by the user.
+    /// </summary>
     public string CommandText
     {
         get;
-        set
-        {
-            if (SetField(ref field, value))
-            {
-                UpdateCommandExample(value);
-            }
-        }
+        set => SetField(ref field, value);
     } = "";
 
+    /// <summary>
+    ///     Gets or sets the status text displayed in the UI.
+    /// </summary>
     public string StatusText
     {
         get;
         set => SetField(ref field, value);
     } = "Choose a CSV file to display its contents.";
 
+    /// <summary>
+    ///     Gets or sets the total rows count text.
+    /// </summary>
     public string TotalRowsText
     {
         get;
         set => SetField(ref field, value);
     } = "";
 
-    public string CommandExampleText
-    {
-        get;
-        set => SetField(ref field, value);
-    } = "";
 
+    /// <summary>
+    ///     Gets or sets the application version text.
+    /// </summary>
     public string VersionText
     {
         get;
@@ -70,55 +92,97 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    ///     Gets a value indicating whether a command can be run.
+    /// </summary>
     public bool CanRunCommand => true;
 
+    /// <summary>
+    ///     Gets the text to display on the run button.
+    /// </summary>
     public string RunButtonText => IsBusy ? "Cancel" : "Run";
 
+    /// <summary>
+    ///     Gets or sets a value indicating whether the inline panel is visible.
+    /// </summary>
     public bool InlinePanelVisible
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets a value indicating whether the settings panel is visible.
+    /// </summary>
     public bool SettingsPanelVisible
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets a value indicating whether the navigation panel is visible.
+    /// </summary>
     public bool NavigatePanelVisible
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets a value indicating whether the command history panel is visible.
+    /// </summary>
     public bool CommandHistoryPanelVisible
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets a value indicating whether the search results panel is visible.
+    /// </summary>
     public bool SearchResultsVisible
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets the selected column for navigation.
+    /// </summary>
     public string? SelectedNavigateColumn
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets the selected row for navigation.
+    /// </summary>
     public string? SelectedNavigateRow
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Command to run the current command text.
+    /// </summary>
     public AsyncRelayCommand RunCommand { get; }
+
+    /// <summary>
+    ///     Command to open a CSV file.
+    /// </summary>
     public AsyncRelayCommand OpenCommand { get; }
+
+    /// <summary>
+    ///     Command to export the current view to a CSV file.
+    /// </summary>
     public AsyncRelayCommand ExportCommand { get; }
+
+    /// <summary>
+    ///     Command to show the settings panel.
+    /// </summary>
     public RelayCommand SettingsCommand { get; }
     public RelayCommand ComparerCommand { get; }
     public RelayCommand NavigateCommand { get; }
@@ -136,20 +200,11 @@ public class MainWindowViewModel : ViewModelBase
         "unhide"
     ];
 
-    private static readonly IReadOnlyDictionary<string, string> CommandExamples =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["load"] = "Arguments: [start(int)] [end(int)]",
-            ["find"] = "Arguments: word / word columnName",
-            ["hide"] = "Arguments: colum / column column",
-            ["unhide"] = "Arguments: column / column column"
-        };
 
     public string[]? AutoCompleteOptions => Configuration.MaxCommandHistoryItems > 0
         ? CommandSuggestions.Take(Configuration.MaxCommandHistoryItems).ToArray()
         : null;
 
-    public bool ShowCommandExamples => Configuration.ShowCommandExamples;
 
     public event Func<Task<string?>>? RequestOpenFile;
     public event Action? RequestShowSettings;
@@ -205,16 +260,6 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public void UpdateCommandExample(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            CommandExampleText = "";
-            return;
-        }
-        var firstWord = text.Split(' ')[0].ToLower();
-        CommandExampleText = CommandExamples.GetValueOrDefault(firstWord, "");
-    }
 
     private void ShowNavigate()
     {
@@ -258,7 +303,7 @@ public class MainWindowViewModel : ViewModelBase
                 {
                     StatusText = $"Loading {filePath}...";
                     _currentFilePath = filePath;
-                    WindowTitle = $"CSVoom - {System.IO.Path.GetFileName(filePath)}";
+                    WindowTitle = $"{System.IO.Path.GetFileName(filePath)}";
                     await CurrentParser.ReadHeadersAsync(filePath, ct);
                     NavigateColumnOptions.Clear();
                     foreach (var header in CurrentParser.Headers) NavigateColumnOptions.Add(header);
@@ -330,7 +375,7 @@ public class MainWindowViewModel : ViewModelBase
         {
             if (_isCanceling) return;
             _isCanceling = true;
-            _currentOperationCts?.Cancel();
+            await _currentOperationCts?.CancelAsync()!;
             StatusText = "Canceling...";
             return;
         }
@@ -361,7 +406,6 @@ public class MainWindowViewModel : ViewModelBase
                 case "hide":
                     RequestSetVisibility?.Invoke(arguments, false, ct);
                     break;
-                case "show":
                 case "unhide":
                     RequestSetVisibility?.Invoke(arguments, true, ct);
                     break;
@@ -391,7 +435,7 @@ public class MainWindowViewModel : ViewModelBase
 
     private void LogCommand(string command)
     {
-        if (CommandHistory.Contains(command)) CommandHistory.Remove(command);
+        CommandHistory.Remove(command);
         CommandHistory.Insert(0, command);
         if (CommandHistory.Count > 100) CommandHistory.RemoveAt(CommandHistory.Count - 1);
     }
@@ -425,8 +469,8 @@ public class MainWindowViewModel : ViewModelBase
         if (arguments.Length == 0) throw new Exception("Usage: find <search_text> [column]");
         if (_currentFilePath == null) return;
 
-        var searchText = arguments[0];
-        var columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
+        string searchText = arguments[0];
+        string? columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
 
         var searchDescription = Parser.IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
         

@@ -1,5 +1,5 @@
-﻿using System.Collections.Generic;
-using System.Text;
+﻿using System;
+using System.Collections.Generic;
 
 namespace CSVoom.app;
 
@@ -15,30 +15,48 @@ public static class Commands
     /// <returns>An array of command arguments.</returns>
     public static string[] SplitCommand(string commandText)
     {
+        if (string.IsNullOrWhiteSpace(commandText)) return [];
+
         var result = new List<string>();
-        var current = new StringBuilder();
+        var span = commandText.AsSpan();
         var inQuotes = false;
+        var start = -1;
 
-        foreach (var c in commandText)
-            switch (c)
+        for (var i = 0; i < span.Length; i++)
+        {
+            var c = span[i];
+            if (c == '\"')
             {
-                case '\"':
-                    inQuotes = !inQuotes;
-                    break;
-                case ' ' when !inQuotes:
-                    if (current.Length > 0)
-                    {
-                        result.Add(current.ToString());
-                        current.Clear();
-                    }
-
-                    break;
-                default:
-                    current.Append(c);
-                    break;
+                if (inQuotes)
+                {
+                    result.Add(span[start..i].ToString());
+                    start = -1;
+                    inQuotes = false;
+                }
+                else
+                {
+                    inQuotes = true;
+                    start = i + 1;
+                }
             }
+            else if (c == ' ' && !inQuotes)
+            {
+                if (start != -1)
+                {
+                    result.Add(span[start..i].ToString());
+                    start = -1;
+                }
+            }
+            else if (start == -1)
+            {
+                start = i;
+            }
+        }
 
-        if (current.Length > 0) result.Add(current.ToString());
+        if (start != -1)
+        {
+            result.Add(span[start..].ToString());
+        }
 
         return [.. result];
     }

@@ -115,6 +115,9 @@ public class Parser
     /// <summary>
     ///     Builds a <see cref="StreamReader" /> for the specified file path, handling compression if necessary.
     /// </summary>
+    /// <param name="filePath">The path to the file.</param>
+    /// <returns>A <see cref="StreamReader" /> for the file.</returns>
+    /// <exception cref="ArgumentException">Thrown when the file path is invalid or the extension is not supported.</exception>
     private StreamReader BuildReader(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath))
@@ -143,6 +146,9 @@ public class Parser
     /// <summary>
     ///     Builds an async enumerator that reads lines from the specified CSV file.
     /// </summary>
+    /// <param name="filePath">The path to the file.</param>
+    /// <param name="cancel">A cancellation token.</param>
+    /// <returns>An async enumerator that reads lines from the file.</returns>
     internal async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
     {
         if (!File.Exists(filePath)) yield break;
@@ -154,6 +160,8 @@ public class Parser
     /// <summary>
     ///     Parses a single CSV line into a list of fields.
     /// </summary>
+    /// <param name="line">The CSV line to parse.</param>
+    /// <returns>A list of field values.</returns>
     internal List<string> ParseCsvLine(string line)
     {
         var fields = new List<string>(Headers.Count > 0 ? Headers.Count : Math.Max(1, line.Length / 8));
@@ -192,6 +200,8 @@ public class Parser
     /// <summary>
     ///     Unescapes a CSV field, handling quotes and double quotes.
     /// </summary>
+    /// <param name="field">The CSV field to unescape.</param>
+    /// <returns>The unescaped field value.</returns>
     private static string UnescapeField(ReadOnlySpan<char> field)
     {
         if (field.Length == 0) return string.Empty;
@@ -221,6 +231,9 @@ public class Parser
     /// <summary>
     ///     Builds a <see cref="CsvRow" /> from a list of values and a row number.
     /// </summary>
+    /// <param name="values">The field values.</param>
+    /// <param name="rowNumber">The row number.</param>
+    /// <returns>A new <see cref="CsvRow" /> instance.</returns>
     internal CsvRow BuildRow(List<string> values, int rowNumber)
     {
         return new CsvRow([.. values], rowNumber);
@@ -229,6 +242,9 @@ public class Parser
     /// <summary>
     ///     Reads the headers from the specified CSV file.
     /// </summary>
+    /// <param name="filePath">The path to the CSV file.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task ReadHeadersAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) return;
@@ -262,6 +278,9 @@ public class Parser
     /// <summary>
     ///     Detects whether the delimiter is ',' or ';' based on frequency in the first line.
     /// </summary>
+    /// <param name="filePath">The path to the CSV file.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The detected delimiter character.</returns>
     private async Task<char> DetectDelimiterAsync(string filePath, CancellationToken cancellationToken)
     {
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
@@ -302,6 +321,8 @@ public class Parser
     /// <summary>
     ///     Converts a zero-based data column index into its spreadsheet-style column identifier.
     /// </summary>
+    /// <param name="columnIndex">The zero-based column index.</param>
+    /// <returns>The spreadsheet-style column identifier (e.g., "C1", "C2").</returns>
     public static string GetColumnIdentifier(int columnIndex)
     {
         return $"C{columnIndex + 1}";
@@ -310,6 +331,9 @@ public class Parser
     /// <summary>
     ///     Counts the total number of rows in the specified CSV file.
     /// </summary>
+    /// <param name="filePath">The path to the CSV file.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The total number of rows (excluding the header if configured).</returns>
     public async Task<int> GetRowCountAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(filePath)) return 0;
@@ -325,6 +349,11 @@ public class Parser
     /// <summary>
     ///     Reads a range of rows from the specified CSV file asynchronously.
     /// </summary>
+    /// <param name="filePath">The path to the CSV file.</param>
+    /// <param name="startRow">The 1-based start row index.</param>
+    /// <param name="endRow">The 1-based end row index.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>An async enumerable of <see cref="CsvRow" /> instances.</returns>
     public async IAsyncEnumerable<CsvRow> ReadRangeAsyncEnumerable(string filePath, int startRow,
         int endRow, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -349,6 +378,11 @@ public class Parser
     ///     Reads a range of rows from the specified CSV file asynchronously and returns them as an
     ///     <see cref="ObservableCollection{CsvRow}" />.
     /// </summary>
+    /// <param name="filePath">The path to the CSV file.</param>
+    /// <param name="startRow">The 1-based start row index.</param>
+    /// <param name="endRow">The 1-based end row index.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>An observable collection of <see cref="CsvRow" /> instances.</returns>
     public async Task<ObservableCollection<CsvRow>> ReadRangeAsync(string filePath, int startRow,
         int endRow, CancellationToken cancellationToken = default)
     {
@@ -361,6 +395,13 @@ public class Parser
     /// <summary>
     ///     Searches for matches in the CSV file asynchronously.
     /// </summary>
+    /// <param name="filePath">The path to the CSV file.</param>
+    /// <param name="matcher">A function that returns true if a value matches the search criteria.</param>
+    /// <param name="headersToSearch">The headers of the columns to search.</param>
+    /// <param name="maxMatches">The maximum number of matches to find.</param>
+    /// <param name="progress">An optional progress reporter for the number of rows processed.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>An async enumerable of matching row details.</returns>
     public async IAsyncEnumerable<(CsvRow Row, string Header, string Value, int RowNumber)>
         ReadMatchesAsyncEnumerable(string filePath, Func<string, bool> matcher, List<string>? headersToSearch,
             int maxMatches, IProgress<int>? progress = null,
@@ -402,6 +443,13 @@ public class Parser
     /// <summary>
     ///     Searches for matches in the CSV file asynchronously and returns them as a list.
     /// </summary>
+    /// <param name="filePath">The path to the CSV file.</param>
+    /// <param name="matcher">A function that returns true if a value matches the search criteria.</param>
+    /// <param name="headersToSearch">The headers of the columns to search.</param>
+    /// <param name="maxMatches">The maximum number of matches to find.</param>
+    /// <param name="progress">An optional progress reporter for the number of rows processed.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A list of matching row details.</returns>
     public async Task<List<(CsvRow Row, string Header, string Value, int RowNumber)>>
         ReadMatchesAsync(string filePath, Func<string, bool> matcher, List<string>? headersToSearch, int maxMatches,
             IProgress<int>? progress = null, CancellationToken cancellationToken = default)
@@ -416,6 +464,11 @@ public class Parser
     /// <summary>
     ///     Exports the specified rows to a CSV file.
     /// </summary>
+    /// <param name="filePath">The path to the destination file.</param>
+    /// <param name="rows">The rows to export.</param>
+    /// <param name="visibleHeaders">The headers of the columns to include in the export.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task ExportToCsvAsync(string filePath, IEnumerable<CsvRow> rows,
         List<string> visibleHeaders, CancellationToken cancellationToken = default)
     {
@@ -447,6 +500,9 @@ public class Parser
     /// <summary>
     ///     Escapes a field for CSV, handling delimiters, quotes, and newlines.
     /// </summary>
+    /// <param name="field">The field value to escape.</param>
+    /// <param name="delimiter">The delimiter character.</param>
+    /// <returns>The escaped field value.</returns>
     private static string EscapeCsvField(string field, char delimiter)
     {
         if (string.IsNullOrEmpty(field)) return string.Empty;
@@ -458,6 +514,10 @@ public class Parser
     /// <summary>
     ///     Compares two CSV files and returns rows that are different.
     /// </summary>
+    /// <param name="leftFilePath">The path to the first CSV file.</param>
+    /// <param name="rightFilePath">The path to the second CSV file.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>An async enumerable of comparison results.</returns>
     public static async IAsyncEnumerable<ComparisonResult> CompareAsyncEnumerable(
         string leftFilePath,
         string rightFilePath,

@@ -11,58 +11,52 @@ namespace CSVoom.app;
 public static class Configuration
 {
     /// <summary>
-    ///     Gets the number of rows to load automatically.
+    ///     Gets the maximum number of rows to load automatically.
     /// </summary>
     public static int AutoLoadRows => GetInt(nameof(AutoLoadRows), 10000, 1);
 
     /// <summary>
-    ///     Gets the maximum number of matches to find.
+    ///     Gets the maximum number of matches to find automatically.
     /// </summary>
     public static int AutoFindRows => GetInt(nameof(AutoFindRows), 100, 1);
 
     /// <summary>
-    ///     Gets the timeout in milliseconds for regex operations.
+    ///     Gets the timeout for regular expression operations.
     /// </summary>
     public static int RegexTimeoutMilliseconds => GetInt(nameof(RegexTimeoutMilliseconds), 250, 1);
 
     /// <summary>
-    ///     Gets the maximum number of items to keep in the command history.
+    ///     Gets the maximum number of command history items to keep.
     /// </summary>
     public static int MaxCommandHistoryItems => GetInt(nameof(MaxCommandHistoryItems), 50, 0);
 
     /// <summary>
-    ///     Gets the maximum number of differences to find before canceling.
+    ///     Gets the maximum number of differences to find when comparing files.
     /// </summary>
     public static int CompareLimit => GetInt(nameof(CompareLimit), 10000, 1);
 
     /// <summary>
-    ///     Gets a value indicating whether searches should be case-insensitive.
+    ///     Gets a value indicating whether search is case-insensitive by default.
     /// </summary>
     public static bool CaseInsensitiveSearch => GetBool(nameof(CaseInsensitiveSearch), true);
 
     /// <summary>
-    ///     Gets a value indicating whether regex search is enabled.
+    ///     Gets a value indicating whether regex search is enabled by default.
     /// </summary>
     public static bool RegexSearch => GetBool(nameof(RegexSearch), true);
-
-    /// <summary>
-    ///     Gets a value indicating whether command examples should be shown.
-    /// </summary>
-    public static bool ShowCommandExamples => GetBool(nameof(ShowCommandExamples), true);
 
     /// <summary>
     ///     Gets a value indicating whether the first row is treated as a header.
     /// </summary>
     public static bool FirstRowIsHeader => GetBool(nameof(FirstRowIsHeader), true);
 
-
     /// <summary>
-    ///     Gets the file patterns to match CSV files.
+    ///     Gets the file patterns used to identify CSV files.
     /// </summary>
     public static string CsvFilePatterns => GetString(nameof(CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv");
 
     /// <summary>
-    ///     Gets the theme variant.
+    ///     Gets the theme variant (e.g., "Light" or "Dark").
     /// </summary>
     public static string Theme => GetString(nameof(Theme), "Dark");
 
@@ -72,83 +66,68 @@ public static class Configuration
     public static IReadOnlyList<ConfigurationSetting> Settings { get; } =
     [
         new(nameof(AutoLoadRows), "Integer", "10000",
-            "Minimum: 1. When no value is specified, default to 10000 for \"Load\"."),
+            "When no other value specified, defaults to this value for load command."),
         new(nameof(AutoFindRows), "Integer", "100",
-            "Minimum: 1. When no value is specified, default to 100 for \"Find\"."),
-        new(nameof(RegexTimeoutMilliseconds), "Integer", "250", "Minimum: 1. Timeout for resolving regex patterns."),
+            "When using the find command, limits the amount of matches to find to this amount"),
+        new(nameof(RegexTimeoutMilliseconds), "Integer", "250", "Timeout for parsing regex"),
         new(nameof(MaxCommandHistoryItems), "Integer", "50",
-            "Minimum: 0. Maximum number of command history items to keep."),
+            "Amount of commands to add to history until starting to override previous ones"),
         new(nameof(CompareLimit), "Integer", "10000",
-            "Minimum: 1. Maximum differences to find before canceling."),
+            "When comparing differences, limits the amount of differences to find before canceling."),
         new(nameof(CaseInsensitiveSearch), "Boolean", "true", "Whether to perform case-insensitive search."),
         new(nameof(RegexSearch), "Boolean", "true", "Whether to seek regex out of command input."),
-        new(nameof(ShowCommandExamples), "Boolean", "true", "Whether to show examples for command usage."),
         new(nameof(FirstRowIsHeader), "Boolean", "true", "Whether to treat the first row as a header."),
         new(nameof(CsvFilePatterns), "String", "*.csv;*.gz;*.ssv;*.tsv", "File patterns to match CSV files."),
         new(nameof(Theme), "String", "Dark", "Theme variant: Light or Dark.")
     ];
 
     /// <summary>
-    ///     Gets the file patterns to match CSV files as an array.
+    ///     Gets the CSV file patterns as an array of strings.
     /// </summary>
-    public static string[] GetCsvFilePatterns()
-    {
-        return CsvFilePatterns.Split([';', ','],
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    }
+    /// <returns>An array of file patterns.</returns>
+    public static string[] GetCsvFilePatterns() =>
+        CsvFilePatterns.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>
     ///     Gets the raw configuration value for the specified key.
     /// </summary>
-    public static string GetRawValue(string key)
-    {
-        return ConfigurationManager.AppSettings[key] ?? Settings.First(s => s.Key == key).DefaultValue;
-    }
+    /// <param name="key">The configuration key.</param>
+    /// <returns>The raw value or the default value if the key is not found.</returns>
+    public static string GetRawValue(string key) =>
+        ConfigurationManager.AppSettings[key] ?? Settings.First(s => s.Key == key).DefaultValue;
 
     /// <summary>
     ///     Saves the specified configuration values.
     /// </summary>
+    /// <param name="values">A dictionary of key-value pairs to save.</param>
     public static void Save(IDictionary<string, string> values)
     {
         var config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+        var settings = config.AppSettings.Settings;
 
         foreach (var (key, value) in values)
-            if (config.AppSettings.Settings[key] is null)
-                config.AppSettings.Settings.Add(key, value);
-            else
-                config.AppSettings.Settings[key].Value = value;
+        {
+            if (settings[key] is null) settings.Add(key, value);
+            else settings[key].Value = value;
+        }
 
         config.Save(ConfigurationSaveMode.Modified);
         ConfigurationManager.RefreshSection("appSettings");
     }
 
-    /// <summary>
-    ///     Resolves an integer configuration value.
-    /// </summary>
     private static int GetInt(string key, int defaultValue, int? minValue = null, int? maxValue = null)
     {
         var value = ConfigurationManager.AppSettings[key];
-        if (string.IsNullOrWhiteSpace(value)) return defaultValue;
+        if (string.IsNullOrWhiteSpace(value) || !int.TryParse(value, out var parsedValue) || parsedValue < minValue || parsedValue > maxValue) return defaultValue;
+        return parsedValue;
 
-        value = value.Replace(",", "").Replace(" ", "");
-
-        return int.TryParse(value, out var parsedValue) &&
-               (minValue == null || parsedValue >= minValue) &&
-               (maxValue == null || parsedValue <= maxValue)
-            ? parsedValue
-            : defaultValue;
     }
 
-    private static bool GetBool(string key, bool defaultValue)
-    {
-        return bool.TryParse(ConfigurationManager.AppSettings[key], out var parsedValue) ? parsedValue : defaultValue;
-    }
+    private static bool GetBool(string key, bool defaultValue) =>
+        bool.TryParse(ConfigurationManager.AppSettings[key], out var parsedValue) ? parsedValue : defaultValue;
 
-    private static string GetString(string key, string defaultValue)
-    {
-        var value = ConfigurationManager.AppSettings[key];
-        return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
-    }
+    private static string GetString(string key, string defaultValue) =>
+        ConfigurationManager.AppSettings[key] ?? defaultValue;
 }
 
 /// <summary>

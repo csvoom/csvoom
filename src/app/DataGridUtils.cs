@@ -5,10 +5,23 @@ using CSVoom.app;
 
 namespace CSVoom.ui;
 
+/// <summary>
+///     Provides utility methods for working with DataGrid columns.
+/// </summary>
 public static class DataGridUtils
 {
+    /// <summary>
+    ///     The offset of the row number column.
+    /// </summary>
     public const int RowNumberColumnOffset = 1;
 
+    /// <summary>
+    ///     Initializes the columns of a <see cref="DataGrid" /> based on the provided <see cref="Parser" />.
+    /// </summary>
+    /// <param name="dataGrid">The <see cref="DataGrid" /> to initialize.</param>
+    /// <param name="parser">The <see cref="Parser" /> containing the headers.</param>
+    /// <param name="columnsByName">An optional dictionary to store columns indexed by their header name.</param>
+    /// <param name="columnsByLetter">An optional dictionary to store columns indexed by their spreadsheet-style letter.</param>
     public static void InitializeColumns(
         DataGrid dataGrid,
         Parser parser,
@@ -48,6 +61,11 @@ public static class DataGridUtils
         }
     }
 
+    /// <summary>
+    ///     Converts a zero-based grid column index to a data column index.
+    /// </summary>
+    /// <param name="gridColumnIndex">The zero-based grid column index.</param>
+    /// <returns>The data column index, or null if it's the row number column.</returns>
     public static int? ToDataColumnIndex(int gridColumnIndex)
     {
         return gridColumnIndex - RowNumberColumnOffset;

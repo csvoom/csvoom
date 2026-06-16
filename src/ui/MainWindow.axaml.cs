@@ -59,7 +59,6 @@ public partial class MainWindow : Window
             try
             {
                 Configuration.Save(_editedSettings);
-                ApplyConfigurationToUi();
                 if (Application.Current is App app) app.UpdateTheme();
                 _viewModel.CloseInlinePanel();
                 return Task.CompletedTask;
@@ -159,14 +158,6 @@ public partial class MainWindow : Window
         if (sender is Button { Tag: DifferenceDetail detail })
         {
             _viewModel.NavigateToMatchCommand.Execute(detail);
-        }
-    }
-
-    private void ApplyConfigurationToUi()
-    {
-        if (_viewModel.ShowCommandExamples)
-        {
-            _viewModel.UpdateCommandExample(CommandTextBox.Text ?? "");
         }
     }
 
