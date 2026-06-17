@@ -358,25 +358,35 @@ public class MainWindowViewModel : ViewModelBase
 
     private async Task NavigateGoAsync()
     {
-        if (!int.TryParse(SelectedNavigateRow, out var row))
+        int? row = null;
+        if (int.TryParse(SelectedNavigateRow, out var r))
         {
-            row = Configuration.FirstRowIsHeader ? 2 : 1;
+            row = r;
         }
 
         await NavigateToRowAndColumn(row, SelectedNavigateColumn ?? "");
         CloseInlinePanel();
     }
 
-    private async Task NavigateToRowAndColumn(int row, string column)
+    private async Task NavigateToRowAndColumn(int? row, string column)
     {
-        var targetRow = VisibleRows.FirstOrDefault(r => r.RowNumber == row);
-        if (targetRow != null)
+        if (row.HasValue)
         {
-            RequestScrollToMatch?.Invoke(targetRow, column, null);
+            var targetRow = VisibleRows.FirstOrDefault(r => r.RowNumber == row.Value);
+            if (targetRow != null)
+            {
+                RequestScrollToMatch?.Invoke(targetRow, column, null);
+            }
+            else
+            {
+                StatusText = $"Row {row.Value} is not currently loaded.";
+            }
         }
-        else
+        else if (!string.IsNullOrEmpty(column))
         {
-            StatusText = $"Row {row} is not currently loaded.";
+            // Only column navigation
+            var targetRow = VisibleRows.FirstOrDefault();
+            RequestScrollToMatch?.Invoke(targetRow, column, null);
         }
 
         await Task.CompletedTask;
