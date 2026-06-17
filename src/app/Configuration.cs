@@ -11,9 +11,9 @@ namespace CSVoom.app;
 public static class Configuration
 {
     /// <summary>
-    ///     Gets the maximum number of rows to load automatically.
+    ///     Gets the maximum number of rows to load.
     /// </summary>
-    public static int AutoLoadRows => GetInt(nameof(AutoLoadRows), 10000, 1);
+    public static int MaxItems => GetInt(nameof(MaxItems), 10000, 1);
 
     /// <summary>
     ///     Gets the maximum number of matches to find automatically.
@@ -65,7 +65,7 @@ public static class Configuration
     /// </summary>
     public static IReadOnlyList<ConfigurationSetting> Settings { get; } =
     [
-        new(nameof(AutoLoadRows), "Integer", "10000",
+        new(nameof(MaxItems), "Integer", "10000",
             "When no other value specified, defaults to this value for load command."),
         new(nameof(AutoFindRows), "Integer", "100",
             "When using the find command, limits the amount of matches to find to this amount"),

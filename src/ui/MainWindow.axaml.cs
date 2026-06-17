@@ -6,7 +6,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.VisualTree;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -88,6 +91,49 @@ public partial class MainWindow : Window
 
         _viewModel.RequestResolveHeaders += FindHeadersByNameLetterOrRegex;
 
+        Dispatcher.UIThread.Post(() =>
+        {
+            var scrollBars = CsvDataGrid.GetVisualDescendants().OfType<ScrollBar>();
+            var verticalScrollBar = scrollBars.FirstOrDefault(sb => sb.Orientation == Avalonia.Layout.Orientation.Vertical);
+            if (verticalScrollBar != null)
+            {
+                verticalScrollBar.Scroll += async (s, e) =>
+                {
+                    // Check if we are near the bottom
+                    if (verticalScrollBar.Value >= verticalScrollBar.Maximum)
+                    {
+                        await _viewModel.LoadMoreRowsAsync();
+                    }
+                    // Check if we are near the top
+                    else if (verticalScrollBar.Value <= verticalScrollBar.Minimum && _viewModel.VisibleRows.Count > 0 && _viewModel.VisibleRows[0].RowNumber > 1)
+                    {
+                        var topRow = _viewModel.VisibleRows.FirstOrDefault();
+                        await _viewModel.LoadPreviousRowsAsync();
+                        if (topRow != null) CsvDataGrid.ScrollIntoView(topRow, null);
+                    }
+                };
+            }
+
+            // Support for scroll gesture (pointer wheel)
+            CsvDataGrid.PointerWheelChanged += async (s, e) =>
+            {
+                if (verticalScrollBar == null) return;
+
+                // Check if we are at the bottom and scrolling down
+                if (e.Delta.Y < 0 && verticalScrollBar.Value >= verticalScrollBar.Maximum)
+                {
+                    await _viewModel.LoadMoreRowsAsync();
+                }
+                // Check if we are at the top and scrolling up
+                else if (e.Delta.Y > 0 && verticalScrollBar.Value <= verticalScrollBar.Minimum && _viewModel.VisibleRows.Count > 0 && _viewModel.VisibleRows[0].RowNumber > 1)
+                {
+                    var topRow = _viewModel.VisibleRows.FirstOrDefault();
+                    await _viewModel.LoadPreviousRowsAsync();
+                    if (topRow != null) CsvDataGrid.ScrollIntoView(topRow, null);
+                }
+            };
+        }, DispatcherPriority.Background);
+
         Closed += (_, _) =>
         {
             _viewModel.CloseInlinePanel();
@@ -146,14 +192,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CommandHistoryListBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (e.AddedItems.Count > 0 && e.AddedItems[0] is string command)
-        {
-            _viewModel.CommandText = command;
-            _viewModel.CloseInlinePanel();
-        }
-    }
 
     private void NavigateToMatch_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
@@ -163,25 +201,23 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CommandTextBox_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter) return;
-
-        if (_viewModel.NavigatePanelVisible)
-        {
-            _viewModel.NavigateGoCommand.Execute(null);
-        }
-        else
-        {
-            _viewModel.RunCommand.Execute(null);
-        }
-    }
 
     private void NavigateControl_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
             _viewModel.NavigateGoCommand.Execute(null);
+        }
+    }
+
+    private void FindControl_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            if (_viewModel.ExecuteFindCommand.CanExecute(null))
+            {
+                _viewModel.ExecuteFindCommand.Execute(null);
+            }
         }
     }
 
@@ -208,7 +244,7 @@ public partial class MainWindow : Window
         var endIndex = CsvDataGrid.Columns.Count;
         if (arguments.Length is < 1 or > 2) return;
 
-        if (arguments[0] == "all")
+        if (arguments[0].Equals("all", StringComparison.OrdinalIgnoreCase))
         {
             for (var i = startIndex; i <= endIndex; i++)
             {
@@ -250,7 +286,14 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(searchValue)) return null;
         if (_columnsByName.TryGetValue(searchValue, out var columnByName)) return columnByName;
-        return _columnsByLetter.GetValueOrDefault(searchValue);
+        if (_columnsByLetter.TryGetValue(searchValue, out var columnByLetter)) return columnByLetter;
+
+        if (int.TryParse(searchValue, out var index) && index >= 0 && index < CsvDataGrid.Columns.Count)
+        {
+            return CsvDataGrid.Columns[index];
+        }
+
+        return null;
     }
 
     private List<string> FindHeadersByNameLetterOrRegex(string searchValue)

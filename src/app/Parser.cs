@@ -74,27 +74,47 @@ public class Parser
     /// </summary>
     public static Func<string, bool> CreateSearchMatcher(string searchTarget)
     {
-        if (IsRegexTarget(searchTarget) && Configuration.RegexSearch)
+        if (string.IsNullOrWhiteSpace(searchTarget)) return _ => false;
+
+        var trimmed = searchTarget.Trim();
+        if (trimmed.StartsWith("!=") || trimmed.StartsWith("<=") || trimmed.StartsWith(">="))
         {
-            var pattern = searchTarget[1..^1];
-            var regexOptions = RegexOptions.CultureInvariant;
+            var op = trimmed[..2];
+            var val = trimmed[2..].Trim();
+            return CreateComparisonMatcher(op, val);
+        }
 
-            if (Configuration.CaseInsensitiveSearch)
-                regexOptions |= RegexOptions.IgnoreCase;
+        if (trimmed.StartsWith('<') || trimmed.StartsWith('>') || trimmed.StartsWith('='))
+        {
+            var op = trimmed[..1];
+            var val = trimmed[1..].Trim();
+            return CreateComparisonMatcher(op, val);
+        }
 
-            try
-            {
-                var regex = new Regex(
-                    pattern,
-                    regexOptions,
-                    TimeSpan.FromMilliseconds(Configuration.RegexTimeoutMilliseconds));
+        if (!IsRegexTarget(searchTarget) || !Configuration.RegexSearch)
+            return value => value.Contains(
+                searchTarget,
+                Configuration.CaseInsensitiveSearch
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal);
+        var pattern = searchTarget[1..^1];
+        var regexOptions = RegexOptions.CultureInvariant;
 
-                return regex.IsMatch;
-            }
-            catch (ArgumentException)
-            {
-                // Fallback to plain text search if regex is invalid
-            }
+        if (Configuration.CaseInsensitiveSearch)
+            regexOptions |= RegexOptions.IgnoreCase;
+
+        try
+        {
+            var regex = new Regex(
+                pattern,
+                regexOptions,
+                TimeSpan.FromMilliseconds(Configuration.RegexTimeoutMilliseconds));
+
+            return regex.IsMatch;
+        }
+        catch (ArgumentException)
+        {
+            // Fallback to plain text search if regex is invalid
         }
 
         return value => value.Contains(
@@ -110,6 +130,43 @@ public class Parser
     public static bool IsRegexTarget(string searchValue)
     {
         return searchValue is ['/', _, ..] && searchValue[^1] == '/';
+    }
+
+    private static Func<string, bool> CreateComparisonMatcher(string op, string targetValue)
+    {
+        var isInteger = int.TryParse(targetValue, out var targetInt);
+        var isNumeric = double.TryParse(targetValue, out var targetNum);
+
+        return value =>
+        {
+            if (op is "=" or "!=")
+            {
+                if (isNumeric && double.TryParse(value, out var valNum))
+                {
+                    return op == "="
+                        ? Math.Abs(valNum - targetNum) < 0.000001
+                        : Math.Abs(valNum - targetNum) > 0.000001;
+                }
+
+                return op == "="
+                    ? string.Equals(value, targetValue, StringComparison.OrdinalIgnoreCase)
+                    : !string.Equals(value, targetValue, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (isInteger && int.TryParse(value, out var valInt))
+            {
+                return op switch
+                {
+                    "<" => valInt < targetInt,
+                    ">" => valInt > targetInt,
+                    "<=" => valInt <= targetInt,
+                    ">=" => valInt >= targetInt,
+                    _ => false
+                };
+            }
+
+            return false;
+        };
     }
 
     /// <summary>
@@ -149,7 +206,7 @@ public class Parser
     /// <param name="filePath">The path to the file.</param>
     /// <param name="cancel">A cancellation token.</param>
     /// <returns>An async enumerator that reads lines from the file.</returns>
-    internal async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
+    private async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
     {
         if (!File.Exists(filePath)) yield break;
 
@@ -162,7 +219,7 @@ public class Parser
     /// </summary>
     /// <param name="line">The CSV line to parse.</param>
     /// <returns>A list of field values.</returns>
-    internal List<string> ParseCsvLine(string line)
+    private List<string> ParseCsvLine(string line)
     {
         var fields = new List<string>(Headers.Count > 0 ? Headers.Count : Math.Max(1, line.Length / 8));
         if (line.Length == 0)
@@ -234,7 +291,7 @@ public class Parser
     /// <param name="values">The field values.</param>
     /// <param name="rowNumber">The row number.</param>
     /// <returns>A new <see cref="CsvRow" /> instance.</returns>
-    internal CsvRow BuildRow(List<string> values, int rowNumber)
+    private static CsvRow BuildRow(List<string> values, int rowNumber)
     {
         return new CsvRow([.. values], rowNumber);
     }
@@ -347,6 +404,25 @@ public class Parser
     }
 
     /// <summary>
+    ///     Reads rows from the specified CSV file asynchronously.
+    /// </summary>
+    public async IAsyncEnumerable<CsvRow> ReadRowsAsyncEnumerable(string filePath,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await ReadHeadersAsync(filePath, cancellationToken);
+        var currentRowNumber = 0;
+        await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
+
+        while (await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
+        {
+            currentRowNumber++;
+            if (currentRowNumber == 1 && Configuration.FirstRowIsHeader) continue;
+
+            yield return BuildRow(ParseCsvLine(enumerator.Current), currentRowNumber);
+        }
+    }
+
+    /// <summary>
     ///     Reads a range of rows from the specified CSV file asynchronously.
     /// </summary>
     /// <param name="filePath">The path to the CSV file.</param>
@@ -361,7 +437,9 @@ public class Parser
         var currentRowNumber = 0;
         await using var enumerator = BuildParserEnumerator(filePath, cancellationToken);
 
-        if (startRow <= 0 || endRow < startRow) yield break;
+        if (startRow <= 0) yield break;
+        if (endRow < startRow) (startRow, endRow) = (endRow, startRow);
+        if (startRow <= 0) startRow = 1;
 
         while (await enumerator.MoveNextAsync() && !cancellationToken.IsCancellationRequested)
         {
@@ -402,7 +480,7 @@ public class Parser
     /// <param name="progress">An optional progress reporter for the number of rows processed.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>An async enumerable of matching row details.</returns>
-    public async IAsyncEnumerable<(CsvRow Row, string Header, string Value, int RowNumber)>
+    private async IAsyncEnumerable<(CsvRow Row, string Header, string Value, int RowNumber)>
         ReadMatchesAsyncEnumerable(string filePath, Func<string, bool> matcher, List<string>? headersToSearch,
             int maxMatches, IProgress<int>? progress = null,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -541,11 +619,9 @@ public class Parser
                 var leftHeader = i < leftParser.Headers.Count ? leftParser.Headers[i] : null;
                 var rightHeader = i < rightParser.Headers.Count ? rightParser.Headers[i] : null;
 
-                if (leftHeader != rightHeader)
-                {
-                    anomalousColumns.Add(i);
-                    ignoredColumns.Add(i);
-                }
+                if (leftHeader == rightHeader) continue;
+                anomalousColumns.Add(i);
+                ignoredColumns.Add(i);
             }
 
             if (anomalousColumns.Count > 0)
@@ -582,10 +658,10 @@ public class Parser
             currentRowNumber++;
 
             var leftRow = leftHasMore
-                ? leftParser.BuildRow(leftParser.ParseCsvLine(leftEnumerator.Current), currentRowNumber)
+                ? BuildRow(leftParser.ParseCsvLine(leftEnumerator.Current), currentRowNumber)
                 : null;
             var rightRow = rightHasMore
-                ? rightParser.BuildRow(rightParser.ParseCsvLine(rightEnumerator.Current), currentRowNumber)
+                ? BuildRow(rightParser.ParseCsvLine(rightEnumerator.Current), currentRowNumber)
                 : null;
 
             if (leftRow == null && rightRow != null)

@@ -94,7 +94,7 @@ public partial class Comparer : Window
             Dispatcher.UIThread.Post(() => DataGridUtils.ApplyFrozenColumn(dataGrid), DispatcherPriority.Background);
 
             visibleRows.Clear();
-            var rows = await parser.ReadRangeAsync(filePath, 1, Configuration.AutoLoadRows);
+            var rows = await parser.ReadRangeAsync(filePath, 1, Configuration.MaxItems);
             foreach (var row in rows) visibleRows.Add(row);
             _viewModel.StatusText = $"Loaded {filePath}.";
         }

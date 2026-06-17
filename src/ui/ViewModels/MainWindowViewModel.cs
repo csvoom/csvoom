@@ -8,17 +8,30 @@ using CSVoom.app;
 
 namespace CSVoom.ui.ViewModels;
 
+public class FindCriterion : ViewModelBase
+{
+    private string _searchText = string.Empty;
+    private string? _column;
+
+    public string SearchText
+    {
+        get => _searchText;
+        set => SetField(ref _searchText, value);
+    }
+
+    public string? Column
+    {
+        get => _column;
+        set => SetField(ref _column, value);
+    }
+}
+
 /// <summary>
 ///     The main view model for the application.
 /// </summary>
 public class MainWindowViewModel : ViewModelBase
 {
     private string? _currentFilePath;
-
-    /// <summary>
-    ///     Gets the command history.
-    /// </summary>
-    public ObservableCollection<string> CommandHistory { get; } = [];
 
     /// <summary>
     ///     Gets the rows currently visible in the grid.
@@ -43,15 +56,6 @@ public class MainWindowViewModel : ViewModelBase
         get;
         set => SetField(ref field, value);
     } = "CSVoom";
-
-    /// <summary>
-    ///     Gets or sets the command text entered by the user.
-    /// </summary>
-    public string CommandText
-    {
-        get;
-        set => SetField(ref field, value);
-    } = "";
 
     /// <summary>
     ///     Gets or sets the status text displayed in the UI.
@@ -88,7 +92,6 @@ public class MainWindowViewModel : ViewModelBase
         {
             if (!SetField(ref field, value)) return;
             OnPropertyChanged(nameof(CanRunCommand));
-            OnPropertyChanged(nameof(RunButtonText));
         }
     }
 
@@ -96,11 +99,6 @@ public class MainWindowViewModel : ViewModelBase
     ///     Gets a value indicating whether a command can be run.
     /// </summary>
     public bool CanRunCommand => true;
-
-    /// <summary>
-    ///     Gets the text to display on the run button.
-    /// </summary>
-    public string RunButtonText => IsBusy ? "Cancel" : "Run";
 
     /// <summary>
     ///     Gets or sets a value indicating whether the inline panel is visible.
@@ -130,18 +128,68 @@ public class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    ///     Gets or sets a value indicating whether the command history panel is visible.
+    ///     Gets or sets a value indicating whether the search results panel is visible.
     /// </summary>
-    public bool CommandHistoryPanelVisible
+    public bool SearchResultsVisible
     {
         get;
         set => SetField(ref field, value);
     }
 
     /// <summary>
-    ///     Gets or sets a value indicating whether the search results panel is visible.
+    ///     Gets or sets a value indicating whether the visibility panel is visible.
     /// </summary>
-    public bool SearchResultsVisible
+    public bool VisibilityPanelVisible
+    {
+        get;
+        set => SetField(ref field, value);
+    }
+
+    /// <summary>
+    ///     Gets the find criteria.
+    /// </summary>
+    public ObservableCollection<FindCriterion> FindCriteria { get; } = [];
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether the find panel is visible.
+    /// </summary>
+    public bool FindPanelVisible
+    {
+        get;
+        set => SetField(ref field, value);
+    }
+
+    /// <summary>
+    ///     Gets or sets the search text for the find panel.
+    /// </summary>
+    public string? FindSearchText
+    {
+        get;
+        set => SetField(ref field, value);
+    }
+
+    /// <summary>
+    ///     Gets or sets the column for the find panel.
+    /// </summary>
+    public string? FindColumn
+    {
+        get;
+        set => SetField(ref field, value);
+    }
+
+    /// <summary>
+    ///     Gets or sets the start column for the visibility range.
+    /// </summary>
+    public string? VisibilityStartColumn
+    {
+        get;
+        set => SetField(ref field, value);
+    }
+
+    /// <summary>
+    ///     Gets or sets the end column for the visibility range.
+    /// </summary>
+    public string? VisibilityEndColumn
     {
         get;
         set => SetField(ref field, value);
@@ -165,9 +213,6 @@ public class MainWindowViewModel : ViewModelBase
         set => SetField(ref field, value);
     }
 
-    /// <summary>
-    ///     Command to run the current command text.
-    /// </summary>
     public AsyncRelayCommand RunCommand { get; }
 
     /// <summary>
@@ -186,26 +231,17 @@ public class MainWindowViewModel : ViewModelBase
     public RelayCommand SettingsCommand { get; }
     public RelayCommand ComparerCommand { get; }
     public RelayCommand NavigateCommand { get; }
-    public RelayCommand CommandHistoryCommand { get; }
     public RelayCommand CloseInlinePanelCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
     public RelayCommand SearchResultsCommand { get; }
     public RelayCommand NavigateToMatchCommand { get; }
+    public RelayCommand VisibilityCommand { get; }
+    public RelayCommand VisibilityApplyCommand { get; }
+    public RelayCommand FindCommand { get; }
+    public RelayCommand AddFindCriterionCommand { get; }
+    public RelayCommand RemoveFindCriterionCommand { get; }
+    public AsyncRelayCommand ExecuteFindCommand { get; }
     public AsyncRelayCommand NavigateGoCommand { get; }
-
-    private static readonly IReadOnlyList<string> CommandSuggestions =
-    [
-        "load ",
-        "find ",
-        "hide ",
-        "unhide"
-    ];
-
-
-    public string[]? AutoCompleteOptions => Configuration.MaxCommandHistoryItems > 0
-        ? CommandSuggestions.Take(Configuration.MaxCommandHistoryItems).ToArray()
-        : null;
-
 
     public event Func<Task<string?>>? RequestOpenFile;
     public event Action? RequestShowSettings;
@@ -222,17 +258,22 @@ public class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel()
     {
-        RunCommand = new AsyncRelayCommand(_ => ExecuteCommandAsync(CommandText), allowConcurrent: true);
+        RunCommand = new AsyncRelayCommand(_ => ExecuteCommandAsync(""), allowConcurrent: true);
         OpenCommand = new AsyncRelayCommand(_ => OpenFileAsync());
         ExportCommand = new AsyncRelayCommand(_ => ExportFileAsync());
         SettingsCommand = new RelayCommand(_ => ShowSettings());
         ComparerCommand = new RelayCommand(_ => RequestShowComparer?.Invoke());
         NavigateCommand = new RelayCommand(_ => ShowNavigate());
-        CommandHistoryCommand = new RelayCommand(_ => ShowCommandHistory());
         SearchResultsCommand = new RelayCommand(_ => ShowSearchResults());
         CloseInlinePanelCommand = new RelayCommand(_ => CloseInlinePanel());
         SaveSettingsCommand = new RelayCommand(_ => RequestSaveSettings?.Invoke());
         NavigateToMatchCommand = new RelayCommand(obj => NavigateToMatch((DifferenceDetail)obj!));
+        VisibilityCommand = new RelayCommand(_ => ShowVisibility());
+        VisibilityApplyCommand = new RelayCommand(obj => VisibilityApply((bool)obj!));
+        FindCommand = new RelayCommand(_ => ShowFind());
+        AddFindCriterionCommand = new RelayCommand(_ => AddFindCriterion());
+        RemoveFindCriterionCommand = new RelayCommand(criterion => RemoveFindCriterion((FindCriterion)criterion!));
+        ExecuteFindCommand = new AsyncRelayCommand(_ => ExecuteFindAsync());
         NavigateGoCommand = new AsyncRelayCommand(_ => NavigateGoAsync());
         
         VersionText = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
@@ -243,8 +284,9 @@ public class MainWindowViewModel : ViewModelBase
         InlinePanelVisible = false;
         SettingsPanelVisible = false;
         NavigatePanelVisible = false;
-        CommandHistoryPanelVisible = false;
         SearchResultsVisible = false;
+        VisibilityPanelVisible = false;
+        FindPanelVisible = false;
     }
 
     private void ShowSettings()
@@ -277,20 +319,6 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private void ShowCommandHistory()
-    {
-        if (CommandHistoryPanelVisible)
-        {
-            CloseInlinePanel();
-        }
-        else
-        {
-            CloseInlinePanel();
-            CommandHistoryPanelVisible = true;
-            InlinePanelVisible = true;
-        }
-    }
-
     private void ShowSearchResults()
     {
         if (SearchResultsVisible)
@@ -303,6 +331,120 @@ public class MainWindowViewModel : ViewModelBase
             SearchResultsVisible = true;
             InlinePanelVisible = true;
         }
+    }
+
+    private void ShowVisibility()
+    {
+        if (VisibilityPanelVisible)
+        {
+            CloseInlinePanel();
+        }
+        else
+        {
+            CloseInlinePanel();
+            VisibilityPanelVisible = true;
+            InlinePanelVisible = true;
+        }
+    }
+
+    private void ShowFind()
+    {
+        if (FindPanelVisible)
+        {
+            CloseInlinePanel();
+        }
+        else
+        {
+            CloseInlinePanel();
+            if (FindCriteria.Count == 0)
+            {
+                AddFindCriterion();
+            }
+            FindPanelVisible = true;
+            InlinePanelVisible = true;
+        }
+    }
+
+    private void AddFindCriterion()
+    {
+        FindCriteria.Add(new FindCriterion());
+    }
+
+    private void RemoveFindCriterion(FindCriterion criterion)
+    {
+        FindCriteria.Remove(criterion);
+        if (FindCriteria.Count == 0)
+        {
+            AddFindCriterion();
+        }
+    }
+
+    private async Task ExecuteFindAsync()
+    {
+        if (FindCriteria.All(c => string.IsNullOrWhiteSpace(c.SearchText))) return;
+
+        var args = new List<string>();
+        foreach (var criterion in FindCriteria)
+        {
+            if (string.IsNullOrWhiteSpace(criterion.SearchText)) continue;
+            
+            args.Add(criterion.SearchText);
+            args.Add(criterion.Column ?? string.Empty);
+        }
+
+        _currentOperationCts = new CancellationTokenSource();
+        IsBusy = true;
+        _isCanceling = false;
+        try
+        {
+            await Command_FindAsync(args.ToArray(), _currentOperationCts.Token);
+            FindPanelVisible = false;
+            if (SearchResults.Count == 0)
+            {
+                InlinePanelVisible = false;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Handled in Command_FindAsync to allow partial results
+            FindPanelVisible = false;
+            if (SearchResults.Count == 0)
+            {
+                InlinePanelVisible = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _isCanceling = false;
+            await UpdateTotalRowCountAsync();
+        }
+    }
+
+    private void VisibilityApply(bool state)
+    {
+        if (string.IsNullOrWhiteSpace(VisibilityStartColumn) && string.IsNullOrWhiteSpace(VisibilityEndColumn))
+        {
+            return;
+        }
+
+        var arguments = new List<string>();
+        if (!string.IsNullOrWhiteSpace(VisibilityStartColumn))
+        {
+            arguments.Add(VisibilityStartColumn);
+        }
+
+        if (!string.IsNullOrWhiteSpace(VisibilityEndColumn))
+        {
+            arguments.Add(VisibilityEndColumn);
+        }
+
+        RequestSetVisibility?.Invoke(arguments.ToArray(), state, CancellationToken.None);
+        CloseInlinePanel();
     }
 
     private async Task OpenFileAsync()
@@ -324,7 +466,7 @@ public class MainWindowViewModel : ViewModelBase
                     NavigateColumnOptions.Clear();
                     foreach (var header in CurrentParser.Headers) NavigateColumnOptions.Add(header);
                     RequestColumnInitialization?.Invoke(CurrentParser);
-                    await LoadRangeIntoViewAsync(1, Configuration.AutoLoadRows, ct);
+                    await LoadRangeIntoViewAsync(1, Configuration.MaxItems, ct);
                     StatusText = $"Loaded {filePath}.";
                 }
                 catch (OperationCanceledException)
@@ -338,6 +480,7 @@ public class MainWindowViewModel : ViewModelBase
                 finally
                 {
                     IsBusy = false;
+                    _isCanceling = false;
                     await UpdateTotalRowCountAsync();
                 }
             }
@@ -373,13 +516,22 @@ public class MainWindowViewModel : ViewModelBase
         if (row.HasValue)
         {
             var targetRow = VisibleRows.FirstOrDefault(r => r.RowNumber == row.Value);
+            if (targetRow == null && _currentFilePath != null)
+            {
+                // Move to a row not loaded - load it
+                int start = Math.Max(1, row.Value - Configuration.MaxItems / 2);
+                int end = start + Configuration.MaxItems - 1;
+                await LoadRangeIntoViewAsync(start, end);
+                targetRow = VisibleRows.FirstOrDefault(r => r.RowNumber == row.Value);
+            }
+
             if (targetRow != null)
             {
                 RequestScrollToMatch?.Invoke(targetRow, column, null);
             }
             else
             {
-                StatusText = $"Row {row.Value} is not currently loaded.";
+                StatusText = $"Row {row.Value} could not be loaded.";
             }
         }
         else if (!string.IsNullOrEmpty(column))
@@ -401,8 +553,6 @@ public class MainWindowViewModel : ViewModelBase
 
     private async Task ExecuteCommandAsync(string commandText)
     {
-        if (string.IsNullOrWhiteSpace(commandText)) return;
-
         if (IsBusy)
         {
             if (_isCanceling) return;
@@ -412,17 +562,19 @@ public class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(commandText)) return;
+
         _currentOperationCts = new CancellationTokenSource();
         var ct = _currentOperationCts.Token;
 
         IsBusy = true;
         _isCanceling = false;
+        string command = "";
         try
         {
-            LogCommand(commandText);
             var parts = Commands.SplitCommand(commandText);
             if (parts.Length == 0) return;
-            var command = parts[0];
+            command = parts[0];
             var arguments = parts.Skip(1).ToArray();
 
             switch (command.ToLower())
@@ -451,7 +603,10 @@ public class MainWindowViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Operation canceled.";
+            if (!string.Equals(command, "find", StringComparison.OrdinalIgnoreCase))
+            {
+                StatusText = "Operation canceled.";
+            }
         }
         catch (Exception ex)
         {
@@ -465,24 +620,17 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private void LogCommand(string command)
-    {
-        CommandHistory.Remove(command);
-        CommandHistory.Insert(0, command);
-        if (CommandHistory.Count > 100) CommandHistory.RemoveAt(CommandHistory.Count - 1);
-    }
-
     private async Task Command_LoadAsync(string[] arguments, CancellationToken ct)
     {
         if (_currentFilePath == null) throw new Exception("No file imported. Use 'Import file' button first.");
 
         int startRow = 1;
-        int endRow = Configuration.AutoLoadRows;
+        int endRow = Configuration.MaxItems;
 
         if (arguments.Length >= 1 && int.TryParse(arguments[0], out var start))
         {
             startRow = start;
-            endRow = start + Configuration.AutoLoadRows - 1;
+            endRow = start + Configuration.MaxItems - 1;
         }
 
         if (arguments.Length >= 2 && int.TryParse(arguments[1], out var end))
@@ -496,62 +644,111 @@ public class MainWindowViewModel : ViewModelBase
         StatusText = $"Loaded Rows {startRow}-{endRow}.";
     }
 
+    private int _lastLoadedEndRow = 0;
+
     private async Task Command_FindAsync(string[] arguments, CancellationToken ct)
     {
-        if (arguments.Length == 0) throw new Exception("Usage: find <search_text> [column]");
+        if (arguments.Length == 0) throw new Exception("Usage: find <search_text> [column] ...");
         if (_currentFilePath == null) return;
 
-        string searchText = arguments[0];
-        string? columnSearchValue = arguments.Length >= 2 ? arguments[1] : null;
+        var criteria = new List<(Func<string, bool> Matcher, List<string>? SearchHeaders)>();
+        var searchDescriptions = new List<string>();
 
-        var searchDescription = Parser.IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"";
+        for (int i = 0; i < arguments.Length; i += 2)
+        {
+            string searchText = arguments[i];
+            string? columnSearchValue = i + 1 < arguments.Length ? arguments[i + 1] : null;
 
-        StatusText = $"Searching for {searchDescription}...";
+            if (string.IsNullOrWhiteSpace(columnSearchValue)) columnSearchValue = null;
+
+            var matcher = Parser.CreateSearchMatcher(searchText);
+            List<string>? searchHeaders = null;
+            if (columnSearchValue != null)
+            {
+                searchHeaders = RequestResolveHeaders?.Invoke(columnSearchValue);
+            }
+
+            criteria.Add((matcher, searchHeaders));
+            searchDescriptions.Add(Parser.IsRegexTarget(searchText) ? $"regex {searchText}" : $"\"{searchText}\"");
+        }
+
+        var fullDescription = string.Join(" AND ", searchDescriptions);
+        StatusText = $"Searching for {fullDescription}...";
 
         var progress = new Progress<int>(count =>
         {
             StatusText = $"Searching... Found {count:N0} matches so far.";
         });
 
-        VisibleRows.Clear();
+        // find should not load the matching rows to the UI
         SearchResults.Clear();
 
-        List<string>? searchHeaders = null;
-        if (columnSearchValue != null)
-        {
-            searchHeaders = RequestResolveHeaders?.Invoke(columnSearchValue);
-        }
-
-        var matches = new List<CsvRow>();
         var details = new List<DifferenceDetail>();
         var headers = CurrentParser.Headers;
         var filePath = _currentFilePath;
-        var matcher = Parser.CreateSearchMatcher(searchText);
         var autoFindRows = Configuration.AutoFindRows;
 
-        await Task.Run(async () =>
+        try
         {
-            await foreach (var match in CurrentParser.ReadMatchesAsyncEnumerable(
-                               filePath,
-                               matcher,
-                               searchHeaders,
-                               autoFindRows,
-                               progress,
-                               ct))
+            await Task.Run(async () =>
             {
-                if (!matches.Contains(match.Row))
+                await foreach (var row in CurrentParser.ReadRowsAsyncEnumerable(filePath, ct))
                 {
-                    matches.Add(match.Row);
+                    bool allMatch = true;
+                    var matchDetailsForRow = new List<DifferenceDetail>();
+
+                    foreach (var criterion in criteria)
+                    {
+                        bool criterionMatched = false;
+                        if (criterion.SearchHeaders != null)
+                        {
+                            foreach (var header in criterion.SearchHeaders)
+                            {
+                                var val = row[header, headers];
+                                if (criterion.Matcher(val))
+                                {
+                                    criterionMatched = true;
+                                    var columnIndex = headers.IndexOf(header);
+                                    matchDetailsForRow.Add(new DifferenceDetail(columnIndex, header, row.RowNumber));
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Search all columns
+                            for (int j = 0; j < headers.Count; j++)
+                            {
+                                if (criterion.Matcher(row[j]))
+                                {
+                                    criterionMatched = true;
+                                    matchDetailsForRow.Add(new DifferenceDetail(j, headers[j], row.RowNumber));
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!criterionMatched)
+                        {
+                            allMatch = false;
+                            break;
+                        }
+                    }
+
+                    if (allMatch)
+                    {
+                        details.AddRange(matchDetailsForRow);
+                        ((IProgress<int>)progress).Report(details.Count);
+                        
+                        if (autoFindRows > 0 && details.Count >= autoFindRows)
+                            break;
+                    }
                 }
-
-                var columnIndex = headers.IndexOf(match.Header);
-                details.Add(new DifferenceDetail(columnIndex, match.Header, match.RowNumber));
-            }
-        }, ct);
-
-        foreach (var row in matches)
+            }, ct);
+        }
+        catch (OperationCanceledException)
         {
-            VisibleRows.Add(row);
+            // Allow showing partial results on cancellation
         }
 
         foreach (var detail in details)
@@ -565,7 +762,11 @@ public class MainWindowViewModel : ViewModelBase
             InlinePanelVisible = true;
         }
 
-        StatusText = $"Found {SearchResults.Count:N0} instance(s) of {searchDescription}.";
+        StatusText = $"Found {SearchResults.Count:N0} instance(s) of {fullDescription}.";
+        if (ct.IsCancellationRequested)
+        {
+            StatusText += " (Cancelled)";
+        }
     }
 
     private async Task Command_ExportAsync(string[] arguments, CancellationToken ct)
@@ -583,7 +784,6 @@ public class MainWindowViewModel : ViewModelBase
     private async Task LoadRangeIntoViewAsync(int startRow, int endRow, CancellationToken ct = default)
     {
         if (_currentFilePath == null) return;
-        VisibleRows.Clear();
         
         var filePath = _currentFilePath;
         var rows = new List<CsvRow>();
@@ -596,9 +796,101 @@ public class MainWindowViewModel : ViewModelBase
             }
         }, ct);
 
+        if (rows.Count == 0) return;
+
+        VisibleRows.Clear();
         foreach (var row in rows)
         {
             VisibleRows.Add(row);
+        }
+        _lastLoadedEndRow = rows[^1].RowNumber;
+        _lastLoadedStartRow = rows[0].RowNumber;
+    }
+
+    private int _lastLoadedStartRow = 0;
+
+    public async Task LoadMoreRowsAsync()
+    {
+        if (IsBusy || _currentFilePath == null) return;
+        
+        int startRow = _lastLoadedEndRow + 1;
+        int endRow = startRow + Configuration.MaxItems / 2; // Load some more
+
+        IsBusy = true;
+        try
+        {
+            var filePath = _currentFilePath;
+            var newRows = new List<CsvRow>();
+            await Task.Run(async () =>
+            {
+                await foreach (var row in CurrentParser.ReadRangeAsyncEnumerable(filePath, startRow, endRow))
+                {
+                    newRows.Add(row);
+                }
+            });
+
+            if (newRows.Count > 0)
+            {
+                foreach (var row in newRows)
+                {
+                    VisibleRows.Add(row);
+                }
+                _lastLoadedEndRow = newRows[^1].RowNumber;
+
+                // Enforce MaxItems
+                while (VisibleRows.Count > Configuration.MaxItems)
+                {
+                    VisibleRows.RemoveAt(0);
+                }
+                _lastLoadedStartRow = VisibleRows[0].RowNumber;
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task LoadPreviousRowsAsync()
+    {
+        if (IsBusy || _currentFilePath == null || _lastLoadedStartRow <= 1) return;
+
+        int endRow = _lastLoadedStartRow - 1;
+        int startRow = Math.Max(1, endRow - Configuration.MaxItems / 2 + 1);
+
+        IsBusy = true;
+        try
+        {
+            var filePath = _currentFilePath;
+            var prevRows = new List<CsvRow>();
+            await Task.Run(async () =>
+            {
+                await foreach (var row in CurrentParser.ReadRangeAsyncEnumerable(filePath, startRow, endRow))
+                {
+                    prevRows.Add(row);
+                }
+            });
+
+            if (prevRows.Count > 0)
+            {
+                // Insert at the beginning in reverse order or just prepend
+                for (int i = prevRows.Count - 1; i >= 0; i--)
+                {
+                    VisibleRows.Insert(0, prevRows[i]);
+                }
+                _lastLoadedStartRow = VisibleRows[0].RowNumber;
+
+                // Enforce MaxItems
+                while (VisibleRows.Count > Configuration.MaxItems)
+                {
+                    VisibleRows.RemoveAt(VisibleRows.Count - 1);
+                }
+                _lastLoadedEndRow = VisibleRows[^1].RowNumber;
+            }
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
