@@ -122,32 +122,35 @@ public partial class Comparer : Window
 
         if (rowIndex < 0) return;
 
+        var leftColumn = detail.ColumnIndex >= 0 ? _leftColumnsByLetter.GetValueOrDefault(Parser.GetColumnIdentifier(detail.ColumnIndex)) : null;
+        var rightColumn = detail.ColumnIndex >= 0 ? _rightColumnsByLetter.GetValueOrDefault(Parser.GetColumnIdentifier(detail.ColumnIndex)) : null;
+
         var leftItems = LeftDataGrid.ItemsSource?.Cast<object>().ToList();
         if (leftItems != null && rowIndex < leftItems.Count)
         {
             LeftDataGrid.SelectedIndex = rowIndex;
-            LeftDataGrid.ScrollIntoView(leftItems[rowIndex], null);
+            if (leftColumn != null)
+            {
+                LeftDataGrid.ScrollIntoView(leftItems[rowIndex], leftColumn);
+            }
+            else
+            {
+                LeftDataGrid.ScrollIntoView(leftItems[rowIndex], null);
+            }
         }
 
         var rightItems = RightDataGrid.ItemsSource?.Cast<object>().ToList();
         if (rightItems != null && rowIndex < rightItems.Count)
         {
             RightDataGrid.SelectedIndex = rowIndex;
-            RightDataGrid.ScrollIntoView(rightItems[rowIndex], null);
-        }
-
-        if (detail.ColumnIndex < 0) return;
-
-        var leftColumn = _leftColumnsByLetter.GetValueOrDefault(Parser.GetColumnIdentifier(detail.ColumnIndex));
-        if (leftColumn != null)
-        {
-            LeftDataGrid.ScrollIntoView(null, leftColumn);
-        }
-
-        var rightColumn = _rightColumnsByLetter.GetValueOrDefault(Parser.GetColumnIdentifier(detail.ColumnIndex));
-        if (rightColumn != null)
-        {
-            RightDataGrid.ScrollIntoView(null, rightColumn);
+            if (rightColumn != null)
+            {
+                RightDataGrid.ScrollIntoView(rightItems[rowIndex], rightColumn);
+            }
+            else
+            {
+                RightDataGrid.ScrollIntoView(rightItems[rowIndex], null);
+            }
         }
     }
 }

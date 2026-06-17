@@ -6,7 +6,8 @@
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="CSVoom.Comparer"
         x:DataType="vm:ComparerViewModel"
-        Title="Comparer">
+        Title="Comparer"
+        Icon="avares://CSVoom/resource/csvoom-logo.png">
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Top bar -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="8">

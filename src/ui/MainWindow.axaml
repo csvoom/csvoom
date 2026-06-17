@@ -7,7 +7,8 @@
         x:Class="CSVoom.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Name="MainWindowElement"
-        Title="{Binding WindowTitle}">
+        Title="{Binding WindowTitle}"
+        Icon="avares://CSVoom/resource/csvoom-logo.png">
     <Grid RowDefinitions="Auto,*,Auto" Margin="0">
         <!-- Top bar -->
         <Menu Grid.Row="0">
@@ -66,7 +67,8 @@
                 <StackPanel IsVisible="{Binding SettingsPanelVisible}" Spacing="8">
                     <DockPanel>
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Text="Settings" FontWeight="Bold" FontSize="18" />
+                            <Image Source="avares://CSVoom/resource/csvoom-logo.png" Width="32" Height="32" VerticalAlignment="Center" />
+                            <TextBlock Text="Settings" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
                             <TextBlock Text="{Binding VersionText}" FontSize="12" Foreground="Gray" VerticalAlignment="Bottom" Margin="0,0,0,2" />
                         </StackPanel>
                         <Button Content="Close" Command="{Binding CloseInlinePanelCommand}" HorizontalAlignment="Right" />
