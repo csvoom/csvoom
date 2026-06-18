@@ -21,9 +21,6 @@
             <MenuItem Header="Visibility" Command="{Binding VisibilityCommand}" />
             <MenuItem Header="Settings" Command="{Binding SettingsCommand}" />
             <MenuItem Header="Comparer" Command="{Binding ComparerCommand}" />
-            <MenuItem Header="History">
-                <MenuItem Header="Search Results" Command="{Binding SearchResultsCommand}" />
-            </MenuItem>
         </Menu>
         <StackPanel
             Grid.Row="0"
@@ -72,7 +69,7 @@
                         <Button Content="Close" Command="{Binding CloseInlinePanelCommand}" HorizontalAlignment="Right" />
                     </DockPanel>
                     <ScrollViewer MaxHeight="400">
-                        <StackPanel x:Name="SettingsFieldsContainer" Spacing="8" />
+                        <StackPanel x:Name="SettingsFieldsContainer" Spacing="8" Margin="8"/>
                     </ScrollViewer>
                     <Button Content="Save &amp; Apply" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Right"
                             Margin="0,8,0,0" />
@@ -100,26 +97,6 @@
                 </StackPanel>
 
 
-                <!-- Search Results Panel -->
-                <StackPanel IsVisible="{Binding SearchResultsVisible}" Spacing="8">
-                    <DockPanel>
-                        <TextBlock Text="Search Results" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" Margin="5"/>
-                        <Button Content="Close" Command="{Binding CloseInlinePanelCommand}" HorizontalAlignment="Right" />
-                    </DockPanel>
-                    <ScrollViewer MaxHeight="300">
-                        <ItemsControl ItemsSource="{Binding SearchResults}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:DifferenceDetail">
-                                    <Button Content="{Binding DisplayLabel}"
-                                            Click="NavigateToMatch_Click"
-                                            Tag="{Binding}"
-                                            HorizontalAlignment="Stretch"
-                                            Margin="2" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </StackPanel>
 
                 <!-- Visibility Panel -->
                 <StackPanel IsVisible="{Binding VisibilityPanelVisible}" Spacing="8">
@@ -150,32 +127,50 @@
                         <Button Content="Close" Command="{Binding CloseInlinePanelCommand}" HorizontalAlignment="Right" />
                     </DockPanel>
                     
-                    <ItemsControl ItemsSource="{Binding FindCriteria}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4" x:DataType="vm:FindCriterion">
-                                    <TextBlock Text="Text:" VerticalAlignment="Center" />
-                                    <TextBox Text="{Binding SearchText, Mode=TwoWay}" 
-                                             Width="300" PlaceholderText="Search text (regex or &lt; &gt; = supported)"
-                                             KeyDown="FindControl_KeyDown" />
-                                    <TextBlock Text="Column:" VerticalAlignment="Center" />
-                                    <AutoCompleteBox ItemsSource="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).NavigateColumnOptions}" 
-                                                     Text="{Binding Column, Mode=TwoWay}" 
-                                                     Width="200" MinimumPrefixLength="0"
-                                                     FilterMode="Contains"
-                                                     KeyDown="FindControl_KeyDown" />
-                                    <Button Content="-" 
-                                            Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).RemoveFindCriterionCommand}" 
-                                            CommandParameter="{Binding}" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <ScrollViewer MaxHeight="200">
+                        <ItemsControl ItemsSource="{Binding FindCriteria}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4" x:DataType="vm:FindCriterion">
+                                        <TextBlock Text="Text:" VerticalAlignment="Center" />
+                                        <TextBox Text="{Binding SearchText, Mode=TwoWay}" 
+                                                 Width="300" PlaceholderText="Search text (regex or &lt; &gt; = supported)"
+                                                 KeyDown="FindControl_KeyDown" />
+                                        <TextBlock Text="Column:" VerticalAlignment="Center" />
+                                        <AutoCompleteBox ItemsSource="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).NavigateColumnOptions}" 
+                                                         Text="{Binding Column, Mode=TwoWay}" 
+                                                         Width="200" MinimumPrefixLength="0"
+                                                         FilterMode="Contains"
+                                                         KeyDown="FindControl_KeyDown" />
+                                        <Button Content="-" 
+                                                Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).RemoveFindCriterionCommand}" 
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                     
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="+" Command="{Binding AddFindCriterionCommand}" />
                         <Button Content="Find" Command="{Binding ExecuteFindCommand}" />
                     </StackPanel>
+
+                    <!-- Results-->
+                    <TextBlock Text="Results" FontWeight="Bold" />
+                    <ScrollViewer MaxHeight="200">
+                        <ItemsControl ItemsSource="{Binding SearchResults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DifferenceDetail">
+                                    <Button Content="{Binding DisplayLabel}"
+                                            Click="NavigateToMatch_Click"
+                                            Tag="{Binding}"
+                                            HorizontalAlignment="Stretch"
+                                            Margin="2" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </StackPanel>
             </Grid>
         </Border>

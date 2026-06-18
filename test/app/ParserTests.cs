@@ -473,29 +473,14 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public void TestCsvFilePatternsSplit()
     {
-        var oldPatterns = Configuration.GetRawValue(nameof(Configuration.CsvFilePatterns));
-        try
-        {
-            // Test with semicolon (app.config style)
-            Configuration.Save(new Dictionary<string, string>
-                { { nameof(Configuration.CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv" } });
+        var patterns = Configuration.GetCsvFilePatterns();
+        Assert.Contains("*.csv", patterns);
+        Assert.Contains("*.gz", patterns);
+        Assert.Contains("*.ssv", patterns);
+        Assert.Contains("*.tsv", patterns);
 
-            var filePath = "test.tsv";
-            var patterns =
-                Configuration.CsvFilePatterns.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
-            Assert.Contains("*" + Path.GetExtension(filePath), patterns, StringComparer.OrdinalIgnoreCase);
-
-            // Test with comma (default Configuration.cs style)
-            Configuration.Save(new Dictionary<string, string>
-                { { nameof(Configuration.CsvFilePatterns), "*.csv,*.gz,*.ssv,*.tsv" } });
-            patterns = Configuration.CsvFilePatterns.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
-            Assert.Contains("*" + Path.GetExtension(filePath), patterns, StringComparer.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            Configuration.Save(
-                new Dictionary<string, string> { { nameof(Configuration.CsvFilePatterns), oldPatterns } });
-        }
+        var filePath = "test.tsv";
+        Assert.Contains("*" + Path.GetExtension(filePath), patterns, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -651,12 +636,12 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         var rightFile = Path.Combine(Path.GetTempPath(), "right_limit.csv");
 
         // Save old config
-        var oldLimit = Configuration.GetRawValue(nameof(Configuration.CompareLimit));
+        var oldLimit = Configuration.GetRawValue(nameof(Configuration.MaxCompare));
 
         try
         {
             // Set limit to 2 differences
-            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CompareLimit), "2" } });
+            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.MaxCompare), "2" } });
 
             // Create files: 
             // Row 1: different
@@ -690,7 +675,7 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
         finally
         {
-            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.CompareLimit), oldLimit } });
+            Configuration.Save(new Dictionary<string, string> { { nameof(Configuration.MaxCompare), oldLimit } });
             if (File.Exists(leftFile)) File.Delete(leftFile);
             if (File.Exists(rightFile)) File.Delete(rightFile);
         }

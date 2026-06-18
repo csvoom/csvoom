@@ -9,6 +9,9 @@ using CSVoom.app;
 
 namespace CSVoom.ui.ViewModels;
 
+/// <summary>
+///     View model for the CSV comparison functionality.
+/// </summary>
 public class ComparerViewModel : ViewModelBase
 {
     private CancellationTokenSource? _comparisonCts;
@@ -16,22 +19,42 @@ public class ComparerViewModel : ViewModelBase
     private Parser LeftParser { get; } = new();
     private Parser RightParser { get; } = new();
 
+    /// <summary>
+    ///     Gets the collection of visible rows for the left CSV file.
+    /// </summary>
     public ObservableCollection<CsvRow> LeftVisibleRows { get; } = [];
+
+    /// <summary>
+    ///     Gets the collection of visible rows for the right CSV file.
+    /// </summary>
     public ObservableCollection<CsvRow> RightVisibleRows { get; } = [];
+
+    /// <summary>
+    ///     Gets the collection of differences found between the two files.
+    /// </summary>
     public ObservableCollection<DifferenceItem> Differences { get; } = [];
 
+    /// <summary>
+    ///     Gets or sets the file path for the left CSV file.
+    /// </summary>
     public string? LeftFilePath
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets the file path for the right CSV file.
+    /// </summary>
     public string? RightFilePath
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets the status text displayed in the UI.
+    /// </summary>
     public string StatusText
     {
         get;
@@ -51,36 +74,67 @@ public class ComparerViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    ///     Gets a value indicating whether a file can be imported.
+    /// </summary>
     public bool CanImport => !IsBusy;
 
+    /// <summary>
+    ///     Gets or sets a value indicating whether the comparison progress is visible.
+    /// </summary>
     public bool ComparisonProgressVisible
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets a value indicating whether the comparison progress is indeterminate.
+    /// </summary>
     public bool ComparisonProgressIndeterminate
     {
         get;
         set => SetField(ref field, value);
     }
 
+    /// <summary>
+    ///     Gets or sets the text for the compare button.
+    /// </summary>
     public string CompareButtonText
     {
         get;
         set => SetField(ref field, value);
     } = "Compare";
 
+    /// <summary>
+    ///     Occurs when a file needs to be loaded into a data grid.
+    /// </summary>
     public event Func<string, Parser, DataGrid, ObservableCollection<CsvRow>, Task>? RequestFileLoad;
+
+    /// <summary>
+    ///     Occurs when navigation to a specific difference is requested.
+    /// </summary>
     public event Action<DifferenceDetail, int>? RequestNavigation;
 
+    /// <summary>
+    ///     Gets the command to start or cancel the comparison.
+    /// </summary>
     public AsyncRelayCommand CompareCommand { get; }
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="ComparerViewModel" /> class.
+    /// </summary>
     public ComparerViewModel()
     {
         CompareCommand = new AsyncRelayCommand(_ => CompareAsync(), allowConcurrent: true);
     }
 
+    /// <summary>
+    ///     Loads the left file.
+    /// </summary>
+    /// <param name="filePath">The file path.</param>
+    /// <param name="dataGrid">The data grid to load into.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task LoadLeftFileAsync(string filePath, DataGrid dataGrid)
     {
         LeftFilePath = filePath;
@@ -95,6 +149,12 @@ public class ComparerViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    ///     Loads the right file.
+    /// </summary>
+    /// <param name="filePath">The file path.</param>
+    /// <param name="dataGrid">The data grid to load into.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task LoadRightFileAsync(string filePath, DataGrid dataGrid)
     {
         RightFilePath = filePath;
@@ -191,7 +251,7 @@ public class ComparerViewModel : ViewModelBase
                     await Task.Yield();
                 }
 
-                if (totalDifferences >= Configuration.CompareLimit)
+                if (totalDifferences >= Configuration.MaxCompare)
                 {
                     StatusText = $"Comparison stopped. Found maximum {totalDifferences} differences.";
                     return;
@@ -216,6 +276,11 @@ public class ComparerViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    ///     Navigates to a specific difference.
+    /// </summary>
+    /// <param name="detail">The difference detail.</param>
+    /// <param name="row">The row index in the visible rows.</param>
     public void NavigateToDifference(DifferenceDetail detail, int row)
     {
         RequestNavigation?.Invoke(detail, row);

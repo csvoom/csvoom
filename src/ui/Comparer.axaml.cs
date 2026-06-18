@@ -21,6 +21,9 @@ public partial class Comparer : Window
     private readonly Dictionary<string, DataGridColumn> _rightColumnsByLetter = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DataGridColumn> _rightColumnsByName = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="Comparer" /> class.
+    /// </summary>
     public Comparer()
     {
         InitializeComponent();

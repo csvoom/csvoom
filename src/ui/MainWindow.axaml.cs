@@ -25,6 +25,9 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, DataGridColumn> _columnsByLetter = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DataGridColumn> _columnsByName = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="MainWindow" /> class.
+    /// </summary>
     public MainWindow()
     {
         InitializeComponent();
@@ -139,6 +142,9 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <summary>
+    ///     Populates the settings panel with controls for each configuration option.
+    /// </summary>
     private void PopulateSettingsPanel()
     {
         _editedSettings.Clear();
@@ -176,6 +182,26 @@ public partial class MainWindow : Window
 
                 _editedSettings[setting.Key] = (checkBox.IsChecked == true).ToString();
                 SettingsFieldsContainer.Children.Add(checkBox);
+            }
+            else if (setting.Type.Equals("Select", StringComparison.OrdinalIgnoreCase))
+            {
+                var options = setting.Options ?? new[] { setting.DefaultValue };
+                var combo = new ComboBox
+                {
+                    ItemsSource = options,
+                    SelectedItem = options.Contains(currentValue) ? currentValue : setting.DefaultValue
+                };
+
+                combo.SelectionChanged += (_, _) =>
+                {
+                    if (combo.SelectedItem is string selected)
+                    {
+                        _editedSettings[setting.Key] = selected;
+                    }
+                };
+
+                _editedSettings[setting.Key] = combo.SelectedItem as string ?? setting.DefaultValue;
+                SettingsFieldsContainer.Children.Add(combo);
             }
             else
             {
@@ -221,6 +247,12 @@ public partial class MainWindow : Window
     }
 
 
+    /// <summary>
+    ///     Scrolls the data grid to a specific match.
+    /// </summary>
+    /// <param name="row">The row to scroll to.</param>
+    /// <param name="header">The header to scroll to.</param>
+    /// <param name="columnLetter">The column letter to scroll to (optional).</param>
     private void ScrollToMatch(CsvRow? row, string? header, string? columnLetter = null)
     {
         if (row == null) return;
@@ -237,6 +269,12 @@ public partial class MainWindow : Window
         CsvDataGrid.Focus();
     }
 
+    /// <summary>
+    ///     Sets the visibility of columns based on a search pattern.
+    /// </summary>
+    /// <param name="arguments">The search arguments.</param>
+    /// <param name="state">True to show, false to hide.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
     private void Command_SetVisibility(string[] arguments, bool state, CancellationToken cancellationToken)
     {
         var startIndex = 1;
@@ -281,6 +319,11 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    ///     Finds a data grid column by its name or column letter.
+    /// </summary>
+    /// <param name="searchValue">The name or letter to search for.</param>
+    /// <returns>The matching column, or null if not found.</returns>
     private DataGridColumn? FindColumnByNameOrLetter(string searchValue)
     {
         if (string.IsNullOrWhiteSpace(searchValue)) return null;
@@ -295,6 +338,11 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    ///     Finds header names by name, letter, or regex pattern.
+    /// </summary>
+    /// <param name="searchValue">The search pattern.</param>
+    /// <returns>A list of matching header names.</returns>
     private List<string> FindHeadersByNameLetterOrRegex(string searchValue)
     {
         var columns = FindColumnsByNameLetterOrRegex(searchValue, true);
@@ -319,6 +367,12 @@ public partial class MainWindow : Window
         return headers;
     }
 
+    /// <summary>
+    ///     Finds data grid columns by name, letter, or regex pattern.
+    /// </summary>
+    /// <param name="searchValue">The search pattern.</param>
+    /// <param name="includeHidden">True to include hidden columns in the search.</param>
+    /// <returns>A list of matching data grid columns.</returns>
     private List<DataGridColumn> FindColumnsByNameLetterOrRegex(string searchValue, bool includeHidden = false)
     {
         if (string.IsNullOrWhiteSpace(searchValue)) return [];
@@ -331,7 +385,7 @@ public partial class MainWindow : Window
 
             try
             {
-                var regex = new Regex(pattern, regexOptions, TimeSpan.FromMilliseconds(Configuration.RegexTimeoutMilliseconds));
+                var regex = new Regex(pattern, regexOptions, TimeSpan.FromMilliseconds(Configuration.RegexTimeout));
                 return CsvDataGrid.Columns
                     .Where(c => (includeHidden || c.IsVisible) && regex.IsMatch(c.Header?.ToString() ?? ""))
                     .ToList();

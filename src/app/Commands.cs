@@ -25,31 +25,36 @@ public static class Commands
         for (var i = 0; i < span.Length; i++)
         {
             var c = span[i];
-            if (c == '\"')
+            switch (c)
             {
-                if (inQuotes)
-                {
+                case '\"' when inQuotes:
                     result.Add(span[start..i].ToString());
                     start = -1;
                     inQuotes = false;
-                }
-                else
-                {
+                    break;
+                case '\"':
                     inQuotes = true;
                     start = i + 1;
-                }
-            }
-            else if (c == ' ' && !inQuotes)
-            {
-                if (start != -1)
+                    break;
+                case ' ' when !inQuotes:
                 {
-                    result.Add(span[start..i].ToString());
-                    start = -1;
+                    if (start != -1)
+                    {
+                        result.Add(span[start..i].ToString());
+                        start = -1;
+                    }
+
+                    break;
                 }
-            }
-            else if (start == -1)
-            {
-                start = i;
+                default:
+                {
+                    if (start == -1)
+                    {
+                        start = i;
+                    }
+
+                    break;
+                }
             }
         }
 

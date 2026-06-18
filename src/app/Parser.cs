@@ -29,6 +29,9 @@ public class CsvRow(string[] values, int rowNumber)
     /// </summary>
     public int RowNumber { get; } = rowNumber;
 
+    /// <summary>
+    ///     Gets a unique identifier for the row (e.g., "R1").
+    /// </summary>
     public string RowId => $"R{RowNumber}";
 
     /// <summary>
@@ -132,7 +135,7 @@ public class Parser
             var regex = new Regex(
                 pattern,
                 regexOptions,
-                TimeSpan.FromMilliseconds(Configuration.RegexTimeoutMilliseconds));
+                TimeSpan.FromMilliseconds(Configuration.RegexTimeout));
 
             return regex.IsMatch;
         }
@@ -192,6 +195,12 @@ public class Parser
         return searchValue is ['/', _, ..] && searchValue[^1] == '/';
     }
 
+    /// <summary>
+    ///     Creates a matcher that compares a value against a target using a specified operator.
+    /// </summary>
+    /// <param name="op">The comparison operator (e.g., "=", "!=", "<", ">", "<=", ">=").</param>
+    /// <param name="targetValue">The target value to compare against.</param>
+    /// <returns>A function that takes a string and returns true if it matches the comparison.</returns>
     public static Func<string, bool> CreateComparisonMatcher(string op, string targetValue)
     {
         var cleanTargetNum = Regex.Replace(targetValue, @"[^\d.,-]", "");
@@ -251,7 +260,7 @@ public class Parser
             throw new ArgumentException("File path cannot be null or whitespace", nameof(filePath));
 
         if (_csvFilePatterns.Length == 0)
-            _csvFilePatterns = Configuration.CsvFilePatterns.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries);
+            _csvFilePatterns = Configuration.GetCsvFilePatterns();
 
         var stream = File.OpenRead(filePath);
         try
@@ -273,7 +282,7 @@ public class Parser
     /// <summary>
     ///     Builds an async enumerator that reads lines from the specified CSV file.
     /// </summary>
-    /// <param name="filePath">The path to the file.</param>
+    /// <param name="filePath"> The path to the file.</param>
     /// <param name="cancel">A cancellation token.</param>
     /// <returns>An async enumerator that reads lines from the file.</returns>
     private async IAsyncEnumerator<string> BuildParserEnumerator(string filePath, CancellationToken cancel = default)
@@ -446,10 +455,10 @@ public class Parser
     }
 
     /// <summary>
-    ///     Converts a zero-based data column index into its spreadsheet-style column identifier.
+    ///     Converts a 0-based column index to an Excel-style column identifier (e.g., 0 -> "A", 25 -> "Z", 26 -> "AA").
     /// </summary>
-    /// <param name="columnIndex">The zero-based column index.</param>
-    /// <returns>The spreadsheet-style column identifier (e.g., "C1", "C2").</returns>
+    /// <param name="columnIndex">The 0-based column index.</param>
+    /// <returns>The Excel-style column identifier.</returns>
     public static string GetColumnIdentifier(int columnIndex)
     {
         return $"C{columnIndex + 1}";
@@ -769,7 +778,7 @@ public class Parser
                 }
             }
 
-            if (differencesFound >= Configuration.CompareLimit)
+            if (differencesFound >= Configuration.MaxCompare)
                 yield break;
         }
     }
@@ -780,10 +789,29 @@ public class Parser
 /// </summary>
 public enum ComparisonStatus
 {
+    /// <summary>
+    ///     The rows are equal.
+    /// </summary>
     Equal,
+
+    /// <summary>
+    ///     The rows are different.
+    /// </summary>
     Different,
+
+    /// <summary>
+    ///     The row exists only in the left file.
+    /// </summary>
     LeftOnly,
+
+    /// <summary>
+    ///     The row exists only in the right file.
+    /// </summary>
     RightOnly,
+
+    /// <summary>
+    ///     The column is anomalous (e.g., header mismatch).
+    /// </summary>
     AnomalousColumn
 }
 

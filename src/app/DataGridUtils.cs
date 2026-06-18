@@ -13,7 +13,7 @@ public static class DataGridUtils
     /// <summary>
     ///     The offset of the row number column.
     /// </summary>
-    public const int RowNumberColumnOffset = 1;
+    private const int RowNumberColumnOffset = 1;
 
     /// <summary>
     ///     Initializes the columns of a <see cref="DataGrid" /> based on the provided <see cref="Parser" />.

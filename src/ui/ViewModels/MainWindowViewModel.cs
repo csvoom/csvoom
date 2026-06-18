@@ -8,17 +8,26 @@ using CSVoom.app;
 
 namespace CSVoom.ui.ViewModels;
 
+/// <summary>
+///     Represents a single search criterion.
+/// </summary>
 public class FindCriterion : ViewModelBase
 {
     private string _searchText = string.Empty;
     private string? _column;
 
+    /// <summary>
+    ///     Gets or sets the text to search for.
+    /// </summary>
     public string SearchText
     {
         get => _searchText;
         set => SetField(ref _searchText, value);
     }
 
+    /// <summary>
+    ///     Gets or sets the column to search in (null for all columns).
+    /// </summary>
     public string? Column
     {
         get => _column;
@@ -131,15 +140,6 @@ public class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    ///     Gets or sets a value indicating whether the search results panel is visible.
-    /// </summary>
-    public bool SearchResultsVisible
-    {
-        get;
-        set => SetField(ref field, value);
-    }
-
-    /// <summary>
     ///     Gets or sets a value indicating whether the visibility panel is visible.
     /// </summary>
     public bool VisibilityPanelVisible
@@ -232,33 +232,117 @@ public class MainWindowViewModel : ViewModelBase
     ///     Command to show the settings panel.
     /// </summary>
     public RelayCommand SettingsCommand { get; }
+    /// <summary>
+    ///     Command to show the CSV comparer.
+    /// </summary>
     public RelayCommand ComparerCommand { get; }
+
+    /// <summary>
+    ///     Command to show the navigate panel.
+    /// </summary>
     public RelayCommand NavigateCommand { get; }
+
+    /// <summary>
+    ///     Command to close the inline panel.
+    /// </summary>
     public RelayCommand CloseInlinePanelCommand { get; }
+
+    /// <summary>
+    ///     Command to save settings.
+    /// </summary>
     public RelayCommand SaveSettingsCommand { get; }
-    public RelayCommand SearchResultsCommand { get; }
+
+    /// <summary>
+    ///     Command to navigate to a match.
+    /// </summary>
     public RelayCommand NavigateToMatchCommand { get; }
+
+    /// <summary>
+    ///     Command to show the visibility panel.
+    /// </summary>
     public RelayCommand VisibilityCommand { get; }
+
+    /// <summary>
+    ///     Command to apply visibility changes.
+    /// </summary>
     public RelayCommand VisibilityApplyCommand { get; }
+
+    /// <summary>
+    ///     Command to show the find panel.
+    /// </summary>
     public RelayCommand FindCommand { get; }
+
+    /// <summary>
+    ///     Command to add a find criterion.
+    /// </summary>
     public RelayCommand AddFindCriterionCommand { get; }
+
+    /// <summary>
+    ///     Command to remove a find criterion.
+    /// </summary>
     public RelayCommand RemoveFindCriterionCommand { get; }
+
+    /// <summary>
+    ///     Command to execute the find operation.
+    /// </summary>
     public AsyncRelayCommand ExecuteFindCommand { get; }
+
+    /// <summary>
+    ///     Command to navigate to a specific row/column.
+    /// </summary>
     public AsyncRelayCommand NavigateGoCommand { get; }
 
+    /// <summary>
+    ///     Occurs when a file open dialog is requested.
+    /// </summary>
     public event Func<Task<string?>>? RequestOpenFile;
+
+    /// <summary>
+    ///     Occurs when the settings should be shown.
+    /// </summary>
     public event Action? RequestShowSettings;
+
+    /// <summary>
+    ///     Occurs when a file save dialog is requested.
+    /// </summary>
     public event Func<Task<string?>>? RequestSaveFile;
+
+    /// <summary>
+    ///     Occurs when settings should be saved.
+    /// </summary>
     public event Func<Task>? RequestSaveSettings;
+
+    /// <summary>
+    ///     Occurs when the comparer should be shown.
+    /// </summary>
     public event Action? RequestShowComparer;
+
+    /// <summary>
+    ///     Occurs when scrolling to a match is requested.
+    /// </summary>
     public event Action<CsvRow?, string, string?>? RequestScrollToMatch;
+
+    /// <summary>
+    ///     Occurs when column initialization is requested.
+    /// </summary>
     public event Action<Parser>? RequestColumnInitialization;
+
+    /// <summary>
+    ///     Occurs when setting visibility is requested.
+    /// </summary>
     public event Action<string[], bool, CancellationToken>? RequestSetVisibility;
+
+    /// <summary>
+    ///     Occurs when resolving headers is requested.
+    /// </summary>
     public event Func<string, List<string>>? RequestResolveHeaders;
 
     public Parser CurrentParser { get; } = new();
     private CancellationTokenSource? _currentOperationCts;
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="MainWindowViewModel" /> class.
+    /// </summary>
     public MainWindowViewModel()
     {
         RunCommand = new AsyncRelayCommand(_ => ExecuteCommandAsync(""), _ => IsBusy, allowConcurrent: true);
@@ -267,7 +351,6 @@ public class MainWindowViewModel : ViewModelBase
         SettingsCommand = new RelayCommand(_ => ShowSettings());
         ComparerCommand = new RelayCommand(_ => RequestShowComparer?.Invoke());
         NavigateCommand = new RelayCommand(_ => ShowNavigate());
-        SearchResultsCommand = new RelayCommand(_ => ShowSearchResults());
         CloseInlinePanelCommand = new RelayCommand(_ => CloseInlinePanel());
         SaveSettingsCommand = new RelayCommand(_ => RequestSaveSettings?.Invoke());
         NavigateToMatchCommand = new RelayCommand(obj => NavigateToMatch((DifferenceDetail)obj!));
@@ -287,7 +370,6 @@ public class MainWindowViewModel : ViewModelBase
         InlinePanelVisible = false;
         SettingsPanelVisible = false;
         NavigatePanelVisible = false;
-        SearchResultsVisible = false;
         VisibilityPanelVisible = false;
         FindPanelVisible = false;
     }
@@ -318,20 +400,6 @@ public class MainWindowViewModel : ViewModelBase
         {
             CloseInlinePanel();
             NavigatePanelVisible = true;
-            InlinePanelVisible = true;
-        }
-    }
-
-    private void ShowSearchResults()
-    {
-        if (SearchResultsVisible)
-        {
-            CloseInlinePanel();
-        }
-        else
-        {
-            CloseInlinePanel();
-            SearchResultsVisible = true;
             InlinePanelVisible = true;
         }
     }
@@ -401,20 +469,10 @@ public class MainWindowViewModel : ViewModelBase
         try
         {
             await Command_FindAsync(args.ToArray(), _currentOperationCts.Token);
-            FindPanelVisible = false;
-            if (SearchResults.Count == 0)
-            {
-                InlinePanelVisible = false;
-            }
         }
         catch (OperationCanceledException)
         {
             // Handled in Command_FindAsync to allow partial results
-            FindPanelVisible = false;
-            if (SearchResults.Count == 0)
-            {
-                InlinePanelVisible = false;
-            }
         }
         catch (Exception ex)
         {
@@ -689,7 +747,7 @@ public class MainWindowViewModel : ViewModelBase
         var details = new List<DifferenceDetail>();
         var headers = CurrentParser.Headers;
         var filePath = _currentFilePath;
-        var autoFindRows = Configuration.AutoFindRows;
+        var autoFindRows = Configuration.MaxFind;
 
         try
         {
@@ -799,10 +857,10 @@ public class MainWindowViewModel : ViewModelBase
             SearchResults.Add(detail);
         }
 
-        if (SearchResults.Count > 0)
+        if (SearchResults.Count == 0 && FindPanelVisible)
         {
-            SearchResultsVisible = true;
-            InlinePanelVisible = true;
+            InlinePanelVisible = false;
+            FindPanelVisible = false;
         }
 
         StatusText = $"Found {SearchResults.Count:N0} instance(s) of {fullDescription}.";

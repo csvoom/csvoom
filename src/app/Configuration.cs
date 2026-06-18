@@ -18,25 +18,20 @@ public static class Configuration
     /// <summary>
     ///     Gets the maximum number of matches to find automatically.
     /// </summary>
-    public static int AutoFindRows => GetInt(nameof(AutoFindRows), 100, 1);
+    public static int MaxFind => GetInt(nameof(MaxFind), 100, 1);
 
     /// <summary>
     ///     Gets the timeout for regular expression operations.
     /// </summary>
-    public static int RegexTimeoutMilliseconds => GetInt(nameof(RegexTimeoutMilliseconds), 250, 1);
-
-    /// <summary>
-    ///     Gets the maximum number of command history items to keep.
-    /// </summary>
-    public static int MaxCommandHistoryItems => GetInt(nameof(MaxCommandHistoryItems), 50, 0);
+    public static int RegexTimeout => GetInt(nameof(RegexTimeout), 250, 1);
 
     /// <summary>
     ///     Gets the maximum number of differences to find when comparing files.
     /// </summary>
-    public static int CompareLimit => GetInt(nameof(CompareLimit), 10000, 1);
+    public static int MaxCompare => GetInt(nameof(MaxCompare), 10000, 1);
 
     /// <summary>
-    ///     Gets a value indicating whether search is case-insensitive by default.
+    ///     Gets a value indicating whether a search is case-insensitive by default.
     /// </summary>
     public static bool CaseInsensitiveSearch => GetBool(nameof(CaseInsensitiveSearch), true);
 
@@ -50,10 +45,7 @@ public static class Configuration
     /// </summary>
     public static bool FirstRowIsHeader => GetBool(nameof(FirstRowIsHeader), true);
 
-    /// <summary>
-    ///     Gets the file patterns used to identify CSV files.
-    /// </summary>
-    public static string CsvFilePatterns => GetString(nameof(CsvFilePatterns), "*.csv;*.gz;*.ssv;*.tsv");
+    private const string DefaultCsvFilePatterns = "*.csv;*.gz;*.ssv;*.tsv";
 
     /// <summary>
     ///     Gets the theme variant (e.g., "Light" or "Dark").
@@ -65,20 +57,14 @@ public static class Configuration
     /// </summary>
     public static IReadOnlyList<ConfigurationSetting> Settings { get; } =
     [
-        new(nameof(MaxItems), "Integer", "10000",
-            "When no other value specified, defaults to this value for load command."),
-        new(nameof(AutoFindRows), "Integer", "100",
-            "When using the find command, limits the amount of matches to find to this amount"),
-        new(nameof(RegexTimeoutMilliseconds), "Integer", "250", "Timeout for parsing regex"),
-        new(nameof(MaxCommandHistoryItems), "Integer", "50",
-            "Amount of commands to add to history until starting to override previous ones"),
-        new(nameof(CompareLimit), "Integer", "10000",
-            "When comparing differences, limits the amount of differences to find before canceling."),
+        new(nameof(MaxItems), "Integer", "1000", "Max amount of rows to be loaded in at once"),
+        new(nameof(MaxFind), "Integer", "1000", "Max amount of rows to find until automatic cancellation"),
+        new(nameof(MaxCompare), "Integer", "1000", "Max amount of differences until automatic cancellation"),
+        new(nameof(RegexTimeout), "Integer", "250", "Timeout for parsing regex"),
         new(nameof(CaseInsensitiveSearch), "Boolean", "true", "Whether to perform case-insensitive search."),
-        new(nameof(RegexSearch), "Boolean", "true", "Whether to seek regex out of command input."),
-        new(nameof(FirstRowIsHeader), "Boolean", "true", "Whether to treat the first row as a header."),
-        new(nameof(CsvFilePatterns), "String", "*.csv;*.gz;*.ssv;*.tsv", "File patterns to match CSV files."),
-        new(nameof(Theme), "String", "Dark", "Theme variant: Light or Dark.")
+        new(nameof(RegexSearch), "Boolean", "true", "Whether to seek regex out of input."),
+        new(nameof(FirstRowIsHeader), "Boolean", "true", "Whether to combine the first row into header."),
+        new(nameof(Theme), "Select", "Dark", "Theme variant: Light or Dark.", ["Light", "Dark"])
     ];
 
     /// <summary>
@@ -86,7 +72,7 @@ public static class Configuration
     /// </summary>
     /// <returns>An array of file patterns.</returns>
     public static string[] GetCsvFilePatterns() =>
-        CsvFilePatterns.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        DefaultCsvFilePatterns.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>
     ///     Gets the raw configuration value for the specified key.
@@ -133,4 +119,4 @@ public static class Configuration
 /// <summary>
 ///     Represents a single configuration setting.
 /// </summary>
-public sealed record ConfigurationSetting(string Key, string Type, string DefaultValue, string Description);
+public sealed record ConfigurationSetting(string Key, string Type, string DefaultValue, string Description, string[]? Options = null);
