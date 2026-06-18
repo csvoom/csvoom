@@ -112,14 +112,8 @@ public partial class Comparer : Window
         }
     }
 
-    private void NavigateToDifference(DifferenceDetail detail, int rowNumber)
+    private void NavigateToDifference(DifferenceDetail detail, int rowIndex)
     {
-        // Rows are 1-indexed in the file.
-        // DataGrid items are 0-indexed. Index 0 corresponds to the first row of data.
-        // If the first row is a header (RowNumber 1), then RowNumber 2 is index 0.
-        // If the first row is NOT a header (RowNumber 1), then RowNumber 1 is index 0.
-        var rowIndex = Configuration.FirstRowIsHeader ? rowNumber - 2 : rowNumber - 1;
-
         if (rowIndex < 0) return;
 
         var leftColumn = detail.ColumnIndex >= 0 ? _leftColumnsByLetter.GetValueOrDefault(Parser.GetColumnIdentifier(detail.ColumnIndex)) : null;

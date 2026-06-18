@@ -6,8 +6,8 @@ namespace CSVoom.ui.ViewModels;
 public record DifferenceDetail(int ColumnIndex, string Description, int Row = 0)
 {
     public string DisplayLabel => ColumnIndex >= 0
-        ? $"{Parser.GetColumnIdentifier(ColumnIndex)}: {Row}"
-        : Description;
+        ? $"Row {Row}, Column {Parser.GetColumnIdentifier(ColumnIndex)} ({Description})"
+        : $"Row {Row}: {Description}";
 }
 
 public record DifferenceItem(int Row, List<DifferenceDetail> Details)

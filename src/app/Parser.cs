@@ -92,11 +92,35 @@ public class Parser
         }
 
         if (!IsRegexTarget(searchTarget) || !Configuration.RegexSearch)
-            return value => value.Contains(
-                searchTarget,
-                Configuration.CaseInsensitiveSearch
-                    ? StringComparison.OrdinalIgnoreCase
-                    : StringComparison.Ordinal);
+        {
+            var cleanTargetNum = Regex.Replace(searchTarget, @"[^\d.,-]", "");
+            var isNumeric = double.TryParse(cleanTargetNum.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var targetNum);
+
+            return value =>
+            {
+                if (!isNumeric)
+                    return value.Contains(
+                        searchTarget,
+                        Configuration.CaseInsensitiveSearch
+                            ? StringComparison.OrdinalIgnoreCase
+                            : StringComparison.Ordinal);
+                var cleanValueNum = Regex.Replace(value, @"[^\d.,-]", "");
+                if (!double.TryParse(cleanValueNum.Replace(",", "."), System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var valNum))
+                    return value.Contains(
+                        searchTarget,
+                        Configuration.CaseInsensitiveSearch
+                            ? StringComparison.OrdinalIgnoreCase
+                            : StringComparison.Ordinal);
+                if (Math.Abs(valNum - targetNum) < 0.000001) return true;
+
+                return value.Contains(
+                    searchTarget,
+                    Configuration.CaseInsensitiveSearch
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal);
+            };
+        }
         var pattern = searchTarget[1..^1];
         var regexOptions = RegexOptions.CultureInvariant;
 
@@ -117,11 +141,47 @@ public class Parser
             // Fallback to plain text search if regex is invalid
         }
 
-        return value => value.Contains(
-            searchTarget,
-            Configuration.CaseInsensitiveSearch
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal);
+        var cleanTargetNumFallback = Regex.Replace(searchTarget, @"[^\d.,-]", "");
+        if (cleanTargetNumFallback.Contains(',') && cleanTargetNumFallback.Contains('.'))
+        {
+            cleanTargetNumFallback = cleanTargetNumFallback.LastIndexOf(',') > cleanTargetNumFallback.LastIndexOf('.')
+                ? cleanTargetNumFallback.Replace(".", "")
+                : cleanTargetNumFallback.Replace(",", "");
+        }
+
+        var isNumericFallback = double.TryParse(cleanTargetNumFallback.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var targetNumFallback);
+
+        return value =>
+        {
+            if (!isNumericFallback)
+                return value.Contains(
+                    searchTarget,
+                    Configuration.CaseInsensitiveSearch
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal);
+            var cleanValueNum = Regex.Replace(value, @"[^\d.,-]", "");
+            if (cleanValueNum.Contains(',') && cleanValueNum.Contains('.'))
+            {
+                cleanValueNum = cleanValueNum.LastIndexOf(',') > cleanValueNum.LastIndexOf('.')
+                    ? cleanValueNum.Replace(".", "")
+                    : cleanValueNum.Replace(",", "");
+            }
+
+            if (!double.TryParse(cleanValueNum.Replace(",", "."), System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var valNum))
+                return value.Contains(
+                    searchTarget,
+                    Configuration.CaseInsensitiveSearch
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal);
+            if (Math.Abs(valNum - targetNumFallback) < 0.000001) return true;
+
+            return value.Contains(
+                searchTarget,
+                Configuration.CaseInsensitiveSearch
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal);
+        };
     }
 
     /// <summary>
@@ -132,37 +192,47 @@ public class Parser
         return searchValue is ['/', _, ..] && searchValue[^1] == '/';
     }
 
-    private static Func<string, bool> CreateComparisonMatcher(string op, string targetValue)
+    public static Func<string, bool> CreateComparisonMatcher(string op, string targetValue)
     {
-        var isInteger = int.TryParse(targetValue, out var targetInt);
-        var isNumeric = double.TryParse(targetValue, out var targetNum);
+        var cleanTargetNum = Regex.Replace(targetValue, @"[^\d.,-]", "");
+        if (cleanTargetNum.Contains(',') && cleanTargetNum.Contains('.'))
+        {
+            cleanTargetNum = cleanTargetNum.LastIndexOf(',') > cleanTargetNum.LastIndexOf('.')
+                ? cleanTargetNum.Replace(".", "")
+                : cleanTargetNum.Replace(",", "");
+        }
+
+        var isNumeric = double.TryParse(cleanTargetNum.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var targetNum);
 
         return value =>
         {
-            if (op is "=" or "!=")
+            var cleanValueNum = Regex.Replace(value, @"[^\d.,-]", "");
+            if (cleanValueNum.Contains(',') && cleanValueNum.Contains('.'))
             {
-                if (isNumeric && double.TryParse(value, out var valNum))
-                {
-                    return op == "="
-                        ? Math.Abs(valNum - targetNum) < 0.000001
-                        : Math.Abs(valNum - targetNum) > 0.000001;
-                }
-
-                return op == "="
-                    ? string.Equals(value, targetValue, StringComparison.OrdinalIgnoreCase)
-                    : !string.Equals(value, targetValue, StringComparison.OrdinalIgnoreCase);
+                cleanValueNum = cleanValueNum.LastIndexOf(',') > cleanValueNum.LastIndexOf('.')
+                    ? cleanValueNum.Replace(".", "")
+                    : cleanValueNum.Replace(",", "");
             }
 
-            if (isInteger && int.TryParse(value, out var valInt))
+            if (isNumeric && double.TryParse(cleanValueNum.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var valNum))
             {
                 return op switch
                 {
-                    "<" => valInt < targetInt,
-                    ">" => valInt > targetInt,
-                    "<=" => valInt <= targetInt,
-                    ">=" => valInt >= targetInt,
+                    "=" => Math.Abs(valNum - targetNum) < 0.000001,
+                    "!=" => Math.Abs(valNum - targetNum) > 0.000001,
+                    "<" => valNum < targetNum,
+                    ">" => valNum > targetNum,
+                    "<=" => valNum <= targetNum,
+                    ">=" => valNum >= targetNum,
                     _ => false
                 };
+            }
+
+            if (op is "=" or "!=")
+            {
+                return op == "="
+                    ? string.Equals(value, targetValue, StringComparison.OrdinalIgnoreCase)
+                    : !string.Equals(value, targetValue, StringComparison.OrdinalIgnoreCase);
             }
 
             return false;

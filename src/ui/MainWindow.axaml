@@ -33,7 +33,7 @@
             Margin="0,0,8,0">
             <Button Content="Cancel" 
                     Command="{Binding RunCommand}" 
-                    IsVisible="{Binding IsBusy}"
+                    IsEnabled="{Binding IsBusy}"
                     Foreground="White" />
         </StackPanel>
 

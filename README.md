@@ -1,4 +1,4 @@
-# CSVoom
+# CSVoom v1.2.0
 
 CSVoom is a multiplatform desktop application for opening, browsing, searching, and filtering CSV files. It is designed to handle large files efficiently by loading data in ranges, keeping the UI responsive.
 
@@ -12,9 +12,9 @@ Built with **.NET 10**, **C# 14**, and **Avalonia UI**.
 - **Filtering**: Quick filtering of currently loaded rows.
 - **Column Management**: Hide/unhide columns by name or spreadsheet-style letter (A, B, C...).
 - **Row Preservation**: Synthetic row-number column that tracks the original source file row numbers.
-- **Command Bar**: CLI-like interaction for power users.
+- **Interactive Panels**: Menus and overlay panels for navigation, searching, and filtering.
 - **Export**: Export filtered or selected row ranges to new CSV files.
-- **Comparison**: Compare two CSV files and highlight differences.
+- **Comparison**: Compare two CSV files and highlight differences. Improved numeric matching now ignores non-numeric formatting characters (e.g., currency symbols, commas).
 
 ## Installation & Build
 
@@ -40,18 +40,23 @@ dotnet test
 
 1. Open CSVoom.
 2. Click **Open CSV** to select a `.csv` or `.gz` file.
-3. Use the **Command Bar** at the top to interact with the data.
+3. Use the **Navigate**, **Find**, and **Visibility** menus at the top to interact with the data.
 
-### Command Reference
+## Interactive Tools
 
-| Command | Description | Example |
-| :--- | :--- | :--- |
-| `load` | Loads a specific range of rows. | `load 1:10000` |
-| `find` | Searches for text/regex in all or specific columns. | `find London`, `find /regex/ A` |
-| `hide` | Hides one or more columns. | `hide A`, `hide city:email` |
-| `unhide` | Restores hidden columns. | `unhide all` |
+CSVoom provides several panels for interacting with your data:
 
-*Note: Use quotes for paths or values containing spaces.*
+- **Navigate**: Quickly jump to a specific row and column.
+- **Find**: Search for text or regular expressions in specific columns. Supports multiple criteria.
+- **Visibility**: Hide or unhide ranges of columns by name.
+- **Comparer**: Open a dedicated view to compare two CSV files.
+- **History**: Access previous search results.
+
+### Find Syntax
+The **Find** panel supports:
+- **Plain Text**: Simple substring matching.
+- **Regex**: Enclose search term in slashes (e.g., `/^London/`).
+- **Numeric Comparisons**: Use operators like `<`, `>`, `=`, `<=`, `>=` for numeric columns.
 
 ## Configuration
 
@@ -59,11 +64,11 @@ CSVoom can be configured via `app.config`. Key settings include:
 - `AutoLoadRows`: Default number of rows to load.
 - `FirstRowIsHeader`: Whether to treat the first line as a header.
 - `Theme`: UI theme (Light/Dark).
-- `RegexSearch`: Enable/disable regex detection in the command bar.
+- `RegexSearch`: Enable/disable regex detection.
 
 ## Project Structure
 
-- `src/app/`: Core logic, CSV parsing, and commands.
+- `src/app/`: Core logic and CSV parsing.
 - `src/ui/`: Avalonia UI views and ViewModels.
 - `test/`: Unit tests for the parser and core logic.
 
@@ -71,3 +76,4 @@ CSVoom can be configured via `app.config`. Key settings include:
 
 - CSV fields with embedded newlines are not currently supported.
 - Only comma, semicolon, or tab delimiters are automatically detected.
+- The scrollbar may behave erratically

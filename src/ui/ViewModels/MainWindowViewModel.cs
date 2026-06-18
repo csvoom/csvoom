@@ -85,13 +85,16 @@ public class MainWindowViewModel : ViewModelBase
         set => SetField(ref field, value);
     }
 
-    private bool IsBusy
+    /// <summary>
+    ///     Gets or sets a value indicating whether the application is busy.
+    /// </summary>
+    public bool IsBusy
     {
         get;
         set
         {
             if (!SetField(ref field, value)) return;
-            OnPropertyChanged(nameof(CanRunCommand));
+            RunCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -258,7 +261,7 @@ public class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel()
     {
-        RunCommand = new AsyncRelayCommand(_ => ExecuteCommandAsync(""), allowConcurrent: true);
+        RunCommand = new AsyncRelayCommand(_ => ExecuteCommandAsync(""), _ => IsBusy, allowConcurrent: true);
         OpenCommand = new AsyncRelayCommand(_ => OpenFileAsync());
         ExportCommand = new AsyncRelayCommand(_ => ExportFileAsync());
         SettingsCommand = new RelayCommand(_ => ShowSettings());
@@ -695,7 +698,47 @@ public class MainWindowViewModel : ViewModelBase
                 await foreach (var row in CurrentParser.ReadRowsAsyncEnumerable(filePath, ct))
                 {
                     bool allMatch = true;
-                    var matchDetailsForRow = new List<DifferenceDetail>();
+                    var columnsMatchingAllCriteria = new HashSet<int>();
+
+                    // Initialize with all columns if no specific columns are targeted by any criterion
+                    // Actually, it's better to check each column against ALL criteria.
+                    for (int j = 0; j < headers.Count; j++)
+                    {
+                        bool columnMatchesAll = true;
+                        foreach (var criterion in criteria)
+                        {
+                            if (criterion.SearchHeaders != null)
+                            {
+                                if (criterion.SearchHeaders.Contains(headers[j]))
+                                {
+                                    if (!criterion.Matcher(row[j]))
+                                    {
+                                        columnMatchesAll = false;
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    // This criterion targets other columns, so this column can't match all criteria
+                                    columnMatchesAll = false;
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                if (!criterion.Matcher(row[j]))
+                                {
+                                    columnMatchesAll = false;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (columnMatchesAll)
+                        {
+                            columnsMatchingAllCriteria.Add(j);
+                        }
+                    }
 
                     foreach (var criterion in criteria)
                     {
@@ -708,8 +751,6 @@ public class MainWindowViewModel : ViewModelBase
                                 if (criterion.Matcher(val))
                                 {
                                     criterionMatched = true;
-                                    var columnIndex = headers.IndexOf(header);
-                                    matchDetailsForRow.Add(new DifferenceDetail(columnIndex, header, row.RowNumber));
                                     break;
                                 }
                             }
@@ -722,7 +763,6 @@ public class MainWindowViewModel : ViewModelBase
                                 if (criterion.Matcher(row[j]))
                                 {
                                     criterionMatched = true;
-                                    matchDetailsForRow.Add(new DifferenceDetail(j, headers[j], row.RowNumber));
                                     break;
                                 }
                             }
@@ -737,7 +777,10 @@ public class MainWindowViewModel : ViewModelBase
 
                     if (allMatch)
                     {
-                        details.AddRange(matchDetailsForRow);
+                        foreach (var colIndex in columnsMatchingAllCriteria)
+                        {
+                            details.Add(new DifferenceDetail(colIndex, headers[colIndex], row.RowNumber));
+                        }
                         ((IProgress<int>)progress).Report(details.Count);
                         
                         if (autoFindRows > 0 && details.Count >= autoFindRows)

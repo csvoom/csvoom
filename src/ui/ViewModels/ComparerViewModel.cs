@@ -142,6 +142,7 @@ public class ComparerViewModel : ViewModelBase
             ComparisonProgressIndeterminate = true;
 
             int totalDifferences = 0;
+            int rowIndex = 0;
 
             await foreach (var result in Parser.CompareAsyncEnumerable(LeftFilePath, RightFilePath,
                                _comparisonCts.Token))
@@ -157,19 +158,19 @@ public class ComparerViewModel : ViewModelBase
                 {
                     case ComparisonStatus.AnomalousColumn when result.DifferentColumns != null:
                     {
-                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Column not found", result.RowNumber)));
+                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Column not found", rowIndex)));
                         break;
                     }
                     case ComparisonStatus.Different when result.DifferentColumns != null:
                     {
-                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Value mismatch", result.RowNumber)));
+                        details.AddRange(result.DifferentColumns.Select(colIndex => new DifferenceDetail(colIndex, "Value mismatch", rowIndex)));
                         break;
                     }
                     case ComparisonStatus.LeftOnly:
-                        details.Add(new DifferenceDetail(-1, "Row only in left file", result.RowNumber));
+                        details.Add(new DifferenceDetail(-1, "Row only in left file", rowIndex));
                         break;
                     case ComparisonStatus.RightOnly:
-                        details.Add(new DifferenceDetail(-1, "Row only in right file", result.RowNumber));
+                        details.Add(new DifferenceDetail(-1, "Row only in right file", rowIndex));
                         break;
                     case ComparisonStatus.Equal:
                         break;
@@ -182,6 +183,8 @@ public class ComparerViewModel : ViewModelBase
                     Differences.Add(new DifferenceItem(result.RowNumber, details));
                     totalDifferences += details.Count;
                 }
+
+                rowIndex++;
 
                 if (Differences.Count % 100 == 0)
                 {

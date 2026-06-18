@@ -696,6 +696,50 @@ public class ParserTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+        [Theory]
+        [InlineData("1234.56", 1234.56)]
+        [InlineData("1,234.56", 1234.56)]
+        [InlineData("1.234,56", 1234.56)]
+        [InlineData("1 234,56", 1234.56)]
+        [InlineData("1 234.56", 1234.56)]
+        [InlineData("-1,234.56", -1234.56)]
+        public void TestNumericParsing(string input, double expected)
+        {
+            var cleanValueNum = System.Text.RegularExpressions.Regex.Replace(input, @"[^\d.,-]", "");
+            if (cleanValueNum.Contains(',') && cleanValueNum.Contains('.'))
+            {
+                cleanValueNum = cleanValueNum.LastIndexOf(',') > cleanValueNum.LastIndexOf('.')
+                    ? cleanValueNum.Replace(".", "")
+                    : cleanValueNum.Replace(",", "");
+            }
+
+            var processed = cleanValueNum.Replace(",", ".");
+            var parsed = double.TryParse(processed, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var valNum);
+            
+            Assert.True(parsed, $"Failed to parse {input}");
+            Assert.Equal(expected, valNum, 2);
+        }
+
+        [Fact]
+        public void TestSearchMatcherNumeric()
+        {
+            var target = "1234.56";
+            var matcher = Parser.CreateSearchMatcher(target);
+            
+            Assert.True(matcher("1234.56"), "Should match 1234.56");
+            Assert.True(matcher("1 234.56"), "Should match 1 234.56");
+        }
+
+        [Theory]
+        [InlineData("=", "1,234.56", "1.234,56", true)]
+        [InlineData(">", "1,234.57", "1.234,56", true)]
+        [InlineData("<", "1,234.55", "1.234,56", true)]
+        public void TestComparisonMatcherNumeric(string op, string value, string target, bool expected)
+        {
+            var matcher = Parser.CreateComparisonMatcher(op, target);
+            Assert.Equal(expected, matcher(value));
+        }
+
     private class MockProgress(Action<int> callback) : IProgress<int>
     {
         public void Report(int value)

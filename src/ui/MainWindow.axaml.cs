@@ -9,7 +9,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.VisualTree;
-using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -97,7 +96,7 @@ public partial class MainWindow : Window
             var verticalScrollBar = scrollBars.FirstOrDefault(sb => sb.Orientation == Avalonia.Layout.Orientation.Vertical);
             if (verticalScrollBar != null)
             {
-                verticalScrollBar.Scroll += async (s, e) =>
+                verticalScrollBar.Scroll += async (_, _) =>
                 {
                     // Check if we are near the bottom
                     if (verticalScrollBar.Value >= verticalScrollBar.Maximum)
@@ -115,7 +114,7 @@ public partial class MainWindow : Window
             }
 
             // Support for scroll gesture (pointer wheel)
-            CsvDataGrid.PointerWheelChanged += async (s, e) =>
+            CsvDataGrid.PointerWheelChanged += async (_, e) =>
             {
                 if (verticalScrollBar == null) return;
 
